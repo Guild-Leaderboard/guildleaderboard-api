@@ -28,7 +28,8 @@ CREATE TABLE guilds (
     average_skills REAL,
     average_catacombs REAL,
     average_slayer REAL,
-    scammers SMALLINT
+    scammers SMALLINT,
+    position_change SMALLINT
 
 )
 guilds.players is an aray of uuids
@@ -93,7 +94,7 @@ CREATE TABLE guild_information (
 
     async def get_guilds(self):
         r = await self.pool.fetch("""
-SELECT DISTINCT ON (guild_id) ROUND(average_catacombs::numeric, 2)::float AS average_catacombs, ROUND(average_skills::numeric, 2)::float AS average_skills, ROUND(average_slayer::numeric, 2)::float AS average_slayer, ROUND(average_weight::numeric, 2)::float AS average_weight, guild_id, guild_name, array_length(players, 1) AS players, NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference, scammers FROM guilds ORDER BY guild_id, capture_date DESC;
+SELECT DISTINCT ON (guild_id) ROUND(average_catacombs::numeric, 2)::float AS average_catacombs, ROUND(average_skills::numeric, 2)::float AS average_skills, ROUND(average_slayer::numeric, 2)::float AS average_slayer, ROUND(average_weight::numeric, 2)::float AS average_weight, guild_id, guild_name, array_length(players, 1) AS players, NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference, scammers, position_change FROM guilds ORDER BY guild_id, capture_date DESC;
         """)
         return [self.format_json(row) for row in r]
 
