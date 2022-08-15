@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import os
+import re
 
 from dotenv import load_dotenv
 from quart import Quart, jsonify, request
@@ -53,20 +54,36 @@ class DatabaseCache:
             self._all_guilds_time = Time().time
         return self._all_guilds
 
-    async def get_guild(self, guild_id):
-        guild = self.guilds.get(guild_id, {})
+    async def get_guild(self, guild_id_or_name):
+        guild = self.guilds.get(guild_id_or_name, {})
         if Time().time - guild.get("get_time", 0) > 60:
+            # [a-z-0-9]{24}
             async with app.db.pool.acquire() as conn:
-                guild = await self.app.db.get_guild(guild_id, conn)
+                if re.match(r"[a-z-0-9]{24}", guild_id_or_name):
+                    guild = await self.app.db.get_guild(guild_id=guild_id_or_name, conn=conn)
+                    if not guild:
+                        guild = await self.app.db.get_guild(guild_name=guild_id_or_name, conn=conn)
+                else:
+                    guild = await self.app.db.get_guild(guild_name=guild_id_or_name, conn=conn)
+                    if not guild:
+                        guild = await self.app.db.get_guild(guild_id=guild_id_or_name, conn=conn)
                 if not guild:
-                    return
+                    return {"error": "Guild not found"}
 
                 guild["players"] = await app.db.get_players(guild["players"], conn)
-                guild["discord"] = await app.db.get_guild_discord(guild_id, conn)
+                guild["discord"] = await app.db.get_guild_discord(guild["guild_id"], conn)
 
-                self.guilds[guild_id] = guild
-                self.guilds[guild_id]["get_time"] = Time().time
-                self.guilds[guild_id]["time_difference"] = str(self.guilds[guild_id]["time_difference"])
+                self.guilds[guild["guild_id"]] = guild
+                self.guilds[guild["guild_id"]]["get_time"] = Time().time
+                self.guilds[guild["guild_id"]]["time_difference"] = str(
+                    self.guilds[guild["guild_id"]]["time_difference"]
+                )
+
+                self.guilds[guild["guild_name"]] = guild
+                self.guilds[guild["guild_name"]]["get_time"] = Time().time
+                self.guilds[guild["guild_name"]]["time_difference"] = str(
+                    self.guilds[guild["guild_id"]]["time_difference"]
+                )
                 for player in guild["players"]:
                     for key, value in player.items():
                         if isinstance(value, datetime.timedelta):

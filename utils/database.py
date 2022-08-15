@@ -98,14 +98,31 @@ SELECT DISTINCT ON (guild_id) ROUND(average_catacombs::numeric, 2)::float AS ave
         """)
         return [self.format_json(row) for row in r]
 
-    async def get_guild(self, guild_id, conn=None):
-        query_str = """
-SELECT DISTINCT ON (guild_id) ROUND(average_catacombs::numeric, 2)::float AS average_catacombs, ROUND(average_skills::numeric, 2)::float AS average_skills, ROUND(average_slayer::numeric, 2)::float AS average_slayer, ROUND(average_weight::numeric, 2)::float AS average_weight, guild_id, guild_name, players, NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference, scammers FROM guilds WHERE guild_id = $1 ORDER BY guild_id, capture_date DESC;
+    async def get_guild(self, guild_id=None, guild_name=None, conn=None):
+        query_str = f"""
+SELECT DISTINCT ON (guild_id) Round(average_catacombs :: NUMERIC, 2) :: FLOAT
+                              AS average_catacombs,
+                              Round(average_skills :: NUMERIC, 2) :: FLOAT
+                              AS average_skills,
+                              Round(average_slayer :: NUMERIC, 2) :: FLOAT
+                              AS average_slayer,
+                              Round(average_weight :: NUMERIC, 2) :: FLOAT
+                              AS average_weight,
+                              guild_id,
+                              guild_name,
+                              players,
+                              Now() - capture_date :: timestamptz AT TIME zone
+                                                      'UTC' AS time_difference,
+                              scammers
+FROM   guilds
+WHERE  {'guild_name = $1' if guild_name else 'guild_id = $1'}
+ORDER  BY guild_id,
+          capture_date DESC; 
         """
         if conn:
-            r = await conn.fetchrow(query_str, guild_id)
+            r = await conn.fetchrow(query_str, guild_name if guild_name else guild_id)
         else:
-            r = await self.pool.fetchrow(query_str, guild_id)
+            r = await self.pool.fetchrow(query_str, guild_name if guild_name else guild_id)
         return self.format_json(r)
 
     async def get_guild_metrics(self, guild_id):

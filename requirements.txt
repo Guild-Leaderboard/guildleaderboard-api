@@ -1,0 +1,6 @@
+asyncpg
+aiohttp
+quart
+nbt
+wrapt
+python-dotenv
