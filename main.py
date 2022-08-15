@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import os
 import re
+from math import sin
 
 from dotenv import load_dotenv
 from quart import Quart, jsonify, request
@@ -9,6 +10,11 @@ from quart import Quart, jsonify, request
 from utils.database import Database
 
 load_dotenv(".env")
+
+
+def weight_multiplier(members):
+    frequency = sin(members / (125 / 0.927296)) + 0.2
+    return members / 125 + (1 - members / 125) * frequency
 
 
 class Time:
@@ -99,6 +105,8 @@ class DatabaseCache:
                 return
             for guild_metric in r:
                 guild_metric["time_difference"] = str(guild_metric["time_difference"])
+                guild_metric["average_weight"] = round(
+                    guild_metric["average_weight"] * weight_multiplier(guild_metric["member_count"]), 2)
             self.guild_metrics[guild_id] = {
                 "d": r,
                 "get_time": Time().time,
