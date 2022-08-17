@@ -74,7 +74,7 @@ class DatabaseCache:
                     if not guild:
                         guild = await self.app.db.get_guild(guild_id=guild_id_or_name, conn=conn)
                 if not guild:
-                    return {"error": "Guild not found"}
+                    return
 
                 guild["players"] = await app.db.get_players(guild["players"], conn)
                 guild["discord"] = await app.db.get_guild_discord(guild["guild_id"], conn)
