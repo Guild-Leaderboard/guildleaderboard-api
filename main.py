@@ -56,7 +56,15 @@ class DatabaseCache:
 
     async def get_guilds(self):
         if not self._all_guilds or Time().time - self._all_guilds_time > 60:
-            self._all_guilds = await self.app.db.get_guilds()
+            r = await self.app.db.get_guilds()
+            res = []
+            for guild in r:
+                if isinstance(guild["time_difference"], datetime.timedelta):
+                    guild["time_difference"] = str(guild["time_difference"])
+                guild["multiplier"] = weight_multiplier(guild["members"])
+
+                res.append(guild)
+            self._all_guilds = res
             self._all_guilds_time = Time().time
         return self._all_guilds
 
@@ -76,21 +84,22 @@ class DatabaseCache:
                 if not guild:
                     return
 
-                guild["players"] = await app.db.get_players(guild["players"], conn)
-                guild["discord"] = await app.db.get_guild_discord(guild["guild_id"], conn)
+                guild["members"] = await app.db.get_players(guild["members"], conn)
+                guild["discord"] = await app.db.get_guild_discord(guild["id"], conn)
+                guild["multiplier"] = weight_multiplier(len(guild["members"]))
 
-                self.guilds[guild["guild_id"]] = guild
-                self.guilds[guild["guild_id"]]["get_time"] = Time().time
-                self.guilds[guild["guild_id"]]["time_difference"] = str(
-                    self.guilds[guild["guild_id"]]["time_difference"]
+                self.guilds[guild["id"]] = guild
+                self.guilds[guild["id"]]["get_time"] = Time().time
+                self.guilds[guild["id"]]["time_difference"] = str(
+                    self.guilds[guild["id"]]["time_difference"]
                 )
 
-                self.guilds[guild["guild_name"]] = guild
-                self.guilds[guild["guild_name"]]["get_time"] = Time().time
-                self.guilds[guild["guild_name"]]["time_difference"] = str(
-                    self.guilds[guild["guild_id"]]["time_difference"]
+                self.guilds[guild["name"]] = guild
+                self.guilds[guild["name"]]["get_time"] = Time().time
+                self.guilds[guild["name"]]["time_difference"] = str(
+                    self.guilds[guild["id"]]["time_difference"]
                 )
-                for player in guild["players"]:
+                for player in guild["members"]:
                     for key, value in player.items():
                         if isinstance(value, datetime.timedelta):
                             player[key] = str(value)
@@ -105,8 +114,12 @@ class DatabaseCache:
                 return
             for guild_metric in r:
                 guild_metric["time_difference"] = str(guild_metric["time_difference"])
-                guild_metric["average_weight"] = round(
-                    guild_metric["average_weight"] * weight_multiplier(guild_metric["member_count"]), 2)
+                weight_m = weight_multiplier(guild_metric["member_count"])
+                guild_metric["senither_weight"] = round(guild_metric["senither_weight"] * weight_m, 2)
+                if guild_metric["lily_weight"] is None:
+                    del guild_metric["lily_weight"]
+                else:
+                    guild_metric["lily_weight"] = round(guild_metric["lily_weight"] * weight_m, 2)
             self.guild_metrics[guild_id] = {
                 "d": r,
                 "get_time": Time().time,
@@ -170,17 +183,23 @@ app = App(__name__)
 @app.route("/leaderboard")
 async def leaderboard():
     r = await app.database_cache.get_guilds()
-    res = []
-    for guild in r:
-        if isinstance(guild["time_difference"], datetime.timedelta):
-            guild["time_difference"] = str(guild["time_difference"])
+    return jsonify(r)
 
-        res.append(guild)
-    return jsonify(res)
+
+@app.route("/stats")
+async def stats():
+    r = await app.database_cache.get_guilds()
+    guilds_tracked = len(r)
+    players_tracked = sum([i["members"] for i in r])
+
+    return jsonify({
+        "guilds_tracked": guilds_tracked,
+        "players_tracked": players_tracked
+    })
 
 
 @app.route("/guild/<guild_id>")
-async def guilds(guild_id):
+async def guild(guild_id):
     r = await app.database_cache.get_guild(guild_id)
     try:
         r2 = r.copy()
@@ -198,23 +217,30 @@ async def metrics(guild_id):
         del r2["get_time"]
     except:
         r2 = r
+
     if request.args.get('format', False):
         guild_name = (await app.db.pool.fetchrow("""
-SELECT guild_name FROM guilds WHERE guild_id = $1 LIMIT 1;
-        """, guild_id))["guild_name"]
+SELECT guild_name AS name FROM guilds WHERE guild_id = $1 LIMIT 1;
+        """, guild_id))["name"]
+
         r3 = {
-            "average_catacombs_data": [],
-            "average_skills_data": [],
-            "average_slayer_data": [],
-            "average_weight_data": [],
+            "catacombs_data": [],
+            "skills_data": [],
+            "slayer_data": [],
+            "senither_weight_data": [],
+            "lily_weight_data": [],
             "member_count_data": []
         }
+
         for guild_metric in r2:
-            r3["average_catacombs_data"].append([guild_metric['time_difference'], guild_metric["average_catacombs"]])
-            r3["average_skills_data"].append([guild_metric['time_difference'], guild_metric["average_skills"]])
-            r3["average_slayer_data"].append([guild_metric['time_difference'], guild_metric["average_slayer"]])
-            r3["average_weight_data"].append([guild_metric['time_difference'], guild_metric["average_weight"]])
+            r3["catacombs_data"].append([guild_metric['time_difference'], guild_metric["catacombs"]])
+            r3["skills_data"].append([guild_metric['time_difference'], guild_metric["skills"]])
+            r3["slayer_data"].append([guild_metric['time_difference'], guild_metric["slayer"]])
+            r3["senither_weight_data"].append([guild_metric['time_difference'], guild_metric["senither_weight"]])
             r3["member_count_data"].append([guild_metric['time_difference'], guild_metric["member_count"]])
+            if guild_metric.get("lily_weight"):
+                r3["lily_weight_data"].append([guild_metric['time_difference'], guild_metric["lily_weight"]])
+
         r4 = {}
         for key, value in r3.items():
             r4[key] = {
@@ -241,18 +267,6 @@ async def history(guild_id):
 async def autocomplete():
     r = await app.db.get_id_name_autocomplete()
     return jsonify(r)
-
-
-@app.route("/stats")
-async def stats():
-    r = await app.database_cache.get_guilds()
-    guilds_tracked = len(r)
-    players_tracked = sum([i["players"] for i in r])
-
-    return jsonify({
-        "guilds_tracked": guilds_tracked,
-        "players_tracked": players_tracked
-    })
 
 
 @app.errorhandler(404)

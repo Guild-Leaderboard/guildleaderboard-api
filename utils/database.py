@@ -94,30 +94,47 @@ CREATE TABLE guild_information (
 
     async def get_guilds(self):
         r = await self.pool.fetch("""
-SELECT DISTINCT ON (guild_id) ROUND(average_catacombs::numeric, 2)::float AS average_catacombs, ROUND(average_skills::numeric, 2)::float AS average_skills, ROUND(average_slayer::numeric, 2)::float AS average_slayer, ROUND(average_weight::numeric, 2)::float AS average_weight, guild_id, guild_name, array_length(players, 1) AS players, NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference, scammers, position_change FROM guilds ORDER BY guild_id, capture_date DESC;
+SELECT
+    DISTINCT ON (guild_id) 
+    ROUND(average_catacombs :: numeric, 2):: float AS catacombs,
+    ROUND(average_skills :: numeric, 2):: float AS skills,
+    ROUND(average_slayer :: numeric, 2):: float AS slayer,
+    ROUND(average_weight :: numeric, 2):: float AS senither_weight,
+    ROUND(average_lily_weight :: numeric, 2):: float AS lily_weight,
+    guild_id AS id,
+    guild_name AS name,
+    array_length(players, 1) AS members,
+    NOW() - capture_date :: timestamptz at time zone 'UTC' AS time_difference,
+    scammers,
+    position_change
+FROM
+    guilds
+ORDER BY
+    guild_id,
+    capture_date DESC;
         """)
         return [self.format_json(row) for row in r]
 
     async def get_guild(self, guild_id=None, guild_name=None, conn=None):
         query_str = f"""
-SELECT DISTINCT ON (guild_id) Round(average_catacombs :: NUMERIC, 2) :: FLOAT
-                              AS average_catacombs,
-                              Round(average_skills :: NUMERIC, 2) :: FLOAT
-                              AS average_skills,
-                              Round(average_slayer :: NUMERIC, 2) :: FLOAT
-                              AS average_slayer,
-                              Round(average_weight :: NUMERIC, 2) :: FLOAT
-                              AS average_weight,
-                              guild_id,
-                              guild_name,
-                              players,
-                              Now() - capture_date :: timestamptz AT TIME zone
-                                                      'UTC' AS time_difference,
-                              scammers
-FROM   guilds
-WHERE  {'guild_name = $1' if guild_name else 'guild_id = $1'}
-ORDER  BY guild_id,
-          capture_date DESC; 
+SELECT 
+    DISTINCT ON (guild_id) 
+    Round(average_catacombs :: numeric, 2) :: float AS catacombs,
+    Round(average_skills :: NUMERIC, 2) :: FLOAT AS skills,
+    Round(average_slayer :: NUMERIC, 2) :: FLOAT AS slayer,
+    Round(average_weight :: NUMERIC, 2) :: FLOAT AS senither_weight,
+    Round(average_lily_weight :: NUMERIC, 2) :: FLOAT AS lily_weight,
+    guild_id AS id,
+    guild_name AS name,
+    players AS members,
+    Now() - capture_date :: timestamptz AT TIME zone 'UTC' AS time_difference,
+    scammers
+FROM   
+    guilds
+WHERE {'guild_name = $1' if guild_name else 'guild_id = $1'}
+ORDER BY
+    guild_id,
+    capture_date DESC; 
         """
         if conn:
             r = await conn.fetchrow(query_str, guild_name if guild_name else guild_id)
@@ -125,13 +142,35 @@ ORDER  BY guild_id,
             r = await self.pool.fetchrow(query_str, guild_name if guild_name else guild_id)
         return self.format_json(r)
 
+    async def get_players(self, uuids: List[str], conn=None):
+        query_str = """
+SELECT 
+    uuid,
+    name,
+    ROUND(weight::numeric, 2)::float AS senither_weight, 
+    ROUND(lily_weight::numeric, 2)::float AS lily_weight, 
+    ROUND(average_skill::numeric, 2)::float AS average_skill, 
+    ROUND(catacomb::numeric, 2)::float AS catacombs, 
+    ROUND(total_slayer::numeric, 2)::float AS total_slayer, 
+    NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference, 
+    scam_reason FROM players 
+WHERE 
+    uuid = ANY($1);
+        """
+        if conn:
+            r = await conn.fetch(query_str, uuids)
+        else:
+            r = await self.pool.fetch(query_str, uuids)
+        return [self.format_json(row) for row in r]
+
     async def get_guild_metrics(self, guild_id):
         r = await self.pool.fetch("""
 SELECT
-    ROUND(average_weight::numeric, 2)::float AS average_weight,
-    ROUND(average_skills::numeric, 2)::float AS average_skills,
-    ROUND(average_catacombs::numeric, 2)::float AS average_catacombs,
-    ROUND(average_slayer::numeric, 2)::float AS average_slayer,
+    ROUND(average_weight::numeric, 2)::float AS senither_weight,
+    Round(average_lily_weight :: NUMERIC, 2) :: FLOAT AS lily_weight,
+    ROUND(average_skills::numeric, 2)::float AS skills,
+    ROUND(average_catacombs::numeric, 2)::float AS catacombs,
+    ROUND(average_slayer::numeric, 2)::float AS slayer,
     cardinality(players) AS member_count,
     NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference
 FROM guilds
@@ -160,16 +199,6 @@ SELECT DISTINCT ON (guild_id) guild_id, guild_name FROM guilds ORDER BY guild_id
         r = await self.pool.fetch("""
 SELECT uuid, name FROM players WHERE uuid = ANY($1)""", uuids)
         return {row['uuid']: row['name'] for row in r}
-
-    async def get_players(self, uuids: List[str], conn=None):
-        query_str = """
-SELECT uuid, name, ROUND(weight::numeric, 2)::float AS weight, ROUND(average_skill::numeric, 2)::float AS average_skill, ROUND(catacomb::numeric, 2)::float AS catacomb, ROUND(total_slayer::numeric, 2)::float AS total_slayer, NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference, scam_reason FROM players WHERE uuid = ANY($1);
-        """
-        if conn:
-            r = await conn.fetch(query_str, uuids)
-        else:
-            r = await self.pool.fetch(query_str, uuids)
-        return [self.format_json(row) for row in r]
 
     async def upsert_guild_info(self, guild_id: str, discordid: str):
         query_str = """
