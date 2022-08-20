@@ -24,29 +24,30 @@ CREATE TABLE guilds (
     guild_name TEXT,
     capture_date TIMESTAMP,
     players TEXT[],
-    average_weight REAL,
-    average_skills REAL,
-    average_catacombs REAL,
-    average_slayer REAL,
+    senither_weight REAL,
+    skills REAL,
+    catacombs REAL,
+    slayer REAL,
     scammers SMALLINT,
-    position_change SMALLINT
-
+    position_change SMALLINT,
+    lily_weight REAL
 )
 guilds.players is an aray of uuids
 
 CREATE TABLE players (
     uuid TEXT UNIQUE,
     name TEXT,
-    weight REAL,
+    senither_weight REAL,
     skill_weight REAL,
     slayer_weight REAL,
     dungeon_weight REAL,
     average_skill REAL,
-    catacomb REAL,
+    catacombs REAL,
     catacomb_xp REAL,
     total_slayer REAL,
     capture_date TIMESTAMP,
-    scam_reason TEXT
+    scam_reason TEXT,
+    lily_weight REAL
 )
 
 CREATE TABLE guild_information (
@@ -96,11 +97,11 @@ CREATE TABLE guild_information (
         r = await self.pool.fetch("""
 SELECT
     DISTINCT ON (guild_id) 
-    ROUND(average_catacombs :: numeric, 2):: float AS catacombs,
-    ROUND(average_skills :: numeric, 2):: float AS skills,
-    ROUND(average_slayer :: numeric, 2):: float AS slayer,
-    ROUND(average_weight :: numeric, 2):: float AS senither_weight,
-    ROUND(average_lily_weight :: numeric, 2):: float AS lily_weight,
+    ROUND(catacombs :: numeric, 2):: float AS catacombs,
+    ROUND(skills :: numeric, 2):: float AS skills,
+    ROUND(slayer :: numeric, 2):: float AS slayer,
+    ROUND(senither_weight :: numeric, 2):: float AS senither_weight,
+    ROUND(lily_weight :: numeric, 2):: float AS lily_weight,
     guild_id AS id,
     guild_name AS name,
     array_length(players, 1) AS members,
@@ -119,11 +120,11 @@ ORDER BY
         query_str = f"""
 SELECT 
     DISTINCT ON (guild_id) 
-    Round(average_catacombs :: numeric, 2) :: float AS catacombs,
-    Round(average_skills :: NUMERIC, 2) :: FLOAT AS skills,
-    Round(average_slayer :: NUMERIC, 2) :: FLOAT AS slayer,
-    Round(average_weight :: NUMERIC, 2) :: FLOAT AS senither_weight,
-    Round(average_lily_weight :: NUMERIC, 2) :: FLOAT AS lily_weight,
+    Round(catacombs :: numeric, 2) :: float AS catacombs,
+    Round(skills :: NUMERIC, 2) :: FLOAT AS skills,
+    Round(slayer :: NUMERIC, 2) :: FLOAT AS slayer,
+    Round(senither_weight :: NUMERIC, 2) :: FLOAT AS senither_weight,
+    Round(lily_weight :: NUMERIC, 2) :: FLOAT AS lily_weight,
     guild_id AS id,
     guild_name AS name,
     players AS members,
@@ -147,10 +148,10 @@ ORDER BY
 SELECT 
     uuid,
     name,
-    ROUND(weight::numeric, 2)::float AS senither_weight, 
+    ROUND(senither_weight::numeric, 2)::float AS senither_weight, 
     ROUND(lily_weight::numeric, 2)::float AS lily_weight, 
     ROUND(average_skill::numeric, 2)::float AS average_skill, 
-    ROUND(catacomb::numeric, 2)::float AS catacombs, 
+    ROUND(catacombs::numeric, 2)::float AS catacombs, 
     ROUND(total_slayer::numeric, 2)::float AS total_slayer, 
     NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference, 
     scam_reason FROM players 
@@ -166,11 +167,11 @@ WHERE
     async def get_guild_metrics(self, guild_id):
         r = await self.pool.fetch("""
 SELECT
-    ROUND(average_weight::numeric, 2)::float AS senither_weight,
-    Round(average_lily_weight :: NUMERIC, 2) :: FLOAT AS lily_weight,
-    ROUND(average_skills::numeric, 2)::float AS skills,
-    ROUND(average_catacombs::numeric, 2)::float AS catacombs,
-    ROUND(average_slayer::numeric, 2)::float AS slayer,
+    ROUND(senither_weight::numeric, 2)::float AS senither_weight,
+    Round(lily_weight :: NUMERIC, 2) :: FLOAT AS lily_weight,
+    ROUND(skills::numeric, 2)::float AS skills,
+    ROUND(catacombs::numeric, 2)::float AS catacombs,
+    ROUND(slayer::numeric, 2)::float AS slayer,
     cardinality(players) AS member_count,
     NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference
 FROM guilds
