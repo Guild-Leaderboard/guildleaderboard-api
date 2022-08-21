@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 from typing import TYPE_CHECKING, List
 
@@ -54,13 +53,21 @@ CREATE TABLE guild_information (
     guild_id TEXT,
     discord TEXT
 )
+
+CREATE TABLE history (
+    type TEXT,
+    uuid TEXT,
+    name TEXT,
+    capture_date TIMESTAMP,
+    guild_id TEXT
+)
 """
 
     pool: asyncpg.pool.Pool = None
 
     def __init__(self, app):
         self.app = app
-        self.json_keys = []
+        self.str_keys = ['time_difference']
         self.cached_guilds = {}
 
     @staticmethod
@@ -91,7 +98,7 @@ CREATE TABLE guild_information (
     def format_json(self, record: asyncpg.Record) -> dict:
         if record is None:
             return None
-        return {key: (json.loads(value) if key in self.json_keys else value) for (key, value) in dict(record).items()}
+        return {key: (str(value) if key in self.str_keys else value) for (key, value) in dict(record).items()}
 
     async def get_guilds(self):
         r = await self.pool.fetch("""
@@ -190,6 +197,45 @@ FROM guilds
 ORDER BY capture_date
     """, str(guild_id))
         return [self.format_json(row) for row in r] if r else []
+
+    async def get_guild_history_v2(self, guild_id=None, player=None, per_page=10, page=1, return_total=False):
+        offset = (page - 1) * per_page
+        if guild_id:
+            player = None
+
+        r = await self.pool.fetch(f"""
+        
+SELECT 
+    type,
+    uuid,
+    name,
+    NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference,
+    guild_id,
+    guild_name 
+FROM history
+WHERE 
+    {'guild_id = $1' if guild_id else ''} 
+    {'uuid = $1' if player else ''}
+    ORDER by capture_date DESC
+    OFFSET $2
+    LIMIT $3
+;
+    """, guild_id if guild_id else player, int(offset), int(per_page))
+        r_vals = [[self.format_json(row) for row in r] if r else []]
+
+        if return_total:
+            total = await self.pool.fetchval(f"""
+            SELECT 
+                count(*)
+            FROM history
+            WHERE 
+                {'guild_id = $1' if guild_id else ''} 
+                {'uuid = $1' if player else ''}
+            ;
+                """, guild_id if guild_id else player)
+            r_vals.append(total)
+
+        return r_vals
 
     async def get_id_name_autocomplete(self):
         r = await self.pool.fetch("""

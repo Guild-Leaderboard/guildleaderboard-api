@@ -2,8 +2,9 @@ import asyncio
 import datetime
 import os
 import re
-from math import sin
+from math import sin, ceil
 
+import aiohttp
 from dotenv import load_dotenv
 from quart import Quart, jsonify, request
 
@@ -53,6 +54,7 @@ class DatabaseCache:
         self.guilds = {}
         self.guild_metrics = {}
         self.guild_history = {}
+        self.guild_history_v2 = {}
 
     async def get_guilds(self):
         if not self._all_guilds or Time().time - self._all_guilds_time > 60:
@@ -174,7 +176,15 @@ class App(Quart):
         super().__init__(*args, **kwargs)
         self.db: Database = None
         self.loop: asyncio.BaseEventLoop = None
+        self.session: aiohttp.ClientSession = None
         self.database_cache: DatabaseCache = DatabaseCache(self)
+        self.patrons = None
+        self.patreon_last_get = 0
+
+    async def get_patreon_members(self):
+        async with self.session.get("https://shieldsio-patreon.vercel.app/api/?username=sbhub") as r:
+            data = await r.json()
+            return data["message"].replace(" patrons", "")
 
 
 app = App(__name__)
@@ -191,10 +201,14 @@ async def stats():
     r = await app.database_cache.get_guilds()
     guilds_tracked = len(r)
     players_tracked = sum([i["members"] for i in r])
+    if Time().time - app.patreon_last_get >= 86400:
+        app.patrons = await app.get_patreon_members()
+        app.patreon_last_get = Time().time
 
     return jsonify({
         "guilds_tracked": guilds_tracked,
-        "players_tracked": players_tracked
+        "players_tracked": players_tracked,
+        "patrons": app.patrons,
     })
 
 
@@ -255,12 +269,31 @@ SELECT guild_name AS name FROM guilds WHERE guild_id = $1 LIMIT 1;
 @app.route("/history/<guild_id>")
 async def history(guild_id):
     r = await app.database_cache.get_guild_history(guild_id)
-    try:
-        r2 = r.copy()
-        del r2["get_time"]
-    except:
-        r2 = r
-    return jsonify(r2)
+    return jsonify(r)
+
+
+@app.route("/v2/history")
+async def history_v2():
+    guild_id = request.args.get("guild_id", None)
+    player = request.args.get("uuid", None)
+    per_page = int(request.args.get("per_page", 10))
+    page = int(request.args.get("page", 1))
+    if page < 1:
+        page = 1
+    if per_page < 1:
+        per_page = 10
+
+    r, total_rows = await app.db.get_guild_history_v2(guild_id, player, per_page, page, return_total=True)
+
+    return jsonify({
+        "data": r,
+        "paginate": {
+            "current_page": page,
+            "last_page": ceil(total_rows / per_page),
+            "per_page": per_page,
+            "total": total_rows
+        }
+    })
 
 
 @app.route("/autocomplete")
@@ -280,6 +313,10 @@ async def start_up():
         app.loop = asyncio.get_event_loop()
     if not app.db:
         app.db = await Database(app).open()
+    if not app.session:
+        app.session = aiohttp.ClientSession(loop=app.loop)
+        app.patrons = await app.get_patreon_members()
+        app.patreon_last_get = Time().time
 
 
 @app.after_request
