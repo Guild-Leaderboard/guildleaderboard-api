@@ -198,28 +198,24 @@ ORDER BY capture_date
     """, str(guild_id))
         return [self.format_json(row) for row in r] if r else []
 
-    async def get_guild_history_v2(self, guild_id=None, player=None, per_page=10, page=1, return_total=False):
+    async def get_history_v2(self, guild_id=None, player=None, per_page=10, page=1, return_total=False):
         offset = (page - 1) * per_page
         if guild_id:
             player = None
-
         r = await self.pool.fetch(f"""
         
 SELECT 
     type,
-    uuid,
-    name,
-    NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference,
-    guild_id,
-    guild_name 
+    {'uuid, name, ' if guild_id else ''}
+    {'guild_id, guild_name,' if player else ''}
+    NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference
 FROM history
 WHERE 
     {'guild_id = $1' if guild_id else ''} 
     {'uuid = $1' if player else ''}
-    ORDER by capture_date DESC
-    OFFSET $2
-    LIMIT $3
-;
+ORDER by capture_date DESC, uuid
+OFFSET $2
+LIMIT $3;
     """, guild_id if guild_id else player, int(offset), int(per_page))
         r_vals = [[self.format_json(row) for row in r] if r else []]
 
@@ -247,13 +243,6 @@ SELECT DISTINCT ON (guild_id) guild_id, guild_name FROM guilds ORDER BY guild_id
 SELECT uuid, name FROM players WHERE uuid = ANY($1)""", uuids)
         return {row['uuid']: row['name'] for row in r}
 
-    async def upsert_guild_info(self, guild_id: str, discordid: str):
-        query_str = """
-INSERT INTO guild_information (guild_id, discord)
-VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET discord = $2;
-        """
-        await self.pool.execute(query_str, guild_id, discordid)
-
     async def get_guild_discord(self, guild_id: str, conn=None):
         query_str = """
 SELECT discord FROM guild_information WHERE guild_id = $1;
@@ -263,3 +252,53 @@ SELECT discord FROM guild_information WHERE guild_id = $1;
         else:
             r = await self.pool.fetchrow(query_str, guild_id)
         return r["discord"] if r else None
+
+    async def get_player(self, uuid: str = None, name: str = None, conn=None) -> dict:
+        query_str = f"""
+SELECT * FROM players WHERE {'uuid = $1' if uuid else 'lower(name) = lower($1)'}
+        """
+        if conn:
+            r = await conn.fetchrow(query_str, uuid if uuid else name)
+        else:
+            r = await self.pool.fetchrow(query_str, uuid if uuid else name)
+        return self.format_json(r) if r else None
+
+    async def get_guild_player_from_history(self, uuid: str, conn=None) -> str:
+        query_str = """
+SELECT 
+    guild_name,
+    type
+FROM history
+WHERE uuid = $1 AND type = '1'  
+ORDER by capture_date DESC 
+LIMIT 1;
+        """
+        if conn:
+            r = await conn.fetchrow(query_str, uuid)
+        else:
+            r = await self.pool.fetchrow(query_str, uuid)
+        return dict(r) if r else None
+
+    async def get_guild_player_from_guilds(self, uuid: str, conn=None) -> str:
+        query_str = """
+SELECT 
+    guild_name,
+    NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference
+FROM guilds
+WHERE $1 = ANY(players)    
+ORDER by capture_date DESC 
+LIMIT 1;
+            """
+        if conn:
+            r = await conn.fetchrow(query_str, uuid)
+        else:
+            r = await self.pool.fetchrow(query_str, uuid)
+        return dict(r) if r else None
+
+    # nothing
+    async def upsert_guild_info(self, guild_id: str, discordid: str):
+        query_str = """
+INSERT INTO guild_information (guild_id, discord)
+VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET discord = $2;
+        """
+        await self.pool.execute(query_str, guild_id, discordid)

@@ -48,13 +48,13 @@ class Time:
 
 class DatabaseCache:
     def __init__(self, app):
-        self.app = app
+        self.app: App = app
         self._all_guilds = None
         self._all_guilds_time = None
         self.guilds = {}
         self.guild_metrics = {}
         self.guild_history = {}
-        self.guild_history_v2 = {}
+        self.player_data = {}
 
     async def get_guilds(self):
         if not self._all_guilds or Time().time - self._all_guilds_time > 60:
@@ -170,6 +170,45 @@ class DatabaseCache:
 
         return self.guild_history[guild_id]["d"]
 
+    async def get_player(self, uuid_or_name):
+        player_data = self.player_data.get(uuid_or_name.lower(), {})
+
+        if not player_data or Time().time - player_data.get("get_time", 0) > 60:
+            async with app.db.pool.acquire() as conn:
+                if re.match(r"[a-z-0-9]{32}", uuid_or_name):
+                    r = await self.app.db.get_player(uuid=uuid_or_name, conn=conn)
+                    if not r:
+                        r = await self.app.db.get_player(name=uuid_or_name, conn=conn)
+                else:
+                    r = await self.app.db.get_player(name=uuid_or_name, conn=conn)
+                    if not r:
+                        r = await self.app.db.get_player(uuid=uuid_or_name, conn=conn)
+                if not r:
+                    return
+
+                # r1 = await self.app.db.get_guild_player_from_history(r["uuid"], conn=conn)
+                # guild_name = r1["guild_name"] if r1 and r1["type"] == "1" else None
+                #
+                # if not r1:
+                r2 = await self.app.db.get_guild_player_from_guilds(r["uuid"], conn=conn)
+                time_difference: datetime.timedelta = r2["time_difference"]
+
+                guild_name = r2["guild_name"] if r2 else None
+                if time_difference.total_seconds() >= 25 * 3600:
+                    guild_name = None
+
+                r["guild_name"] = guild_name
+
+                player_data = {
+                    "d": r,
+                    "get_time": Time().time,
+                }
+
+                self.player_data[r["uuid"]] = player_data
+                self.player_data[r["name"].lower()] = player_data
+
+        return self.player_data[uuid_or_name.lower()]["d"]
+
 
 class App(Quart):
     def __init__(self, *args, **kwargs):
@@ -187,7 +226,7 @@ class App(Quart):
             return data["message"].replace(" patrons", "")
 
 
-app = App(__name__)
+app: App = App(__name__)
 
 
 @app.route("/leaderboard")
@@ -272,6 +311,33 @@ async def history(guild_id):
     return jsonify(r)
 
 
+def fix_history_order(history: list) -> list:
+    new_history = []
+    last_action = ''
+    reverse_history = history[::-1]
+    skip_next = False
+    for i in range(len(reverse_history)):
+        if skip_next:
+            skip_next = False
+            continue
+
+        if i == 0:
+            new_history.append(reverse_history[i])
+            last_action = reverse_history[i]["type"]
+            continue
+        if last_action == reverse_history[i]["type"]:
+            new_history.insert(i, reverse_history[i + 1])
+            new_history.insert(i + 1, reverse_history[i])
+            last_action = reverse_history[i]["type"]
+            skip_next = True
+            continue
+        else:
+            new_history.append(reverse_history[i])
+            last_action = reverse_history[i]["type"]
+
+    return list(reversed(new_history))
+
+
 @app.route("/v2/history")
 async def history_v2():
     guild_id = request.args.get("guild_id", None)
@@ -282,18 +348,25 @@ async def history_v2():
         page = 1
     if per_page < 1:
         per_page = 10
+    if not player and not guild_id:
+        return jsonify(None)
 
-    r, total_rows = await app.db.get_guild_history_v2(guild_id, player, per_page, page, return_total=True)
+    r, total_rows = await app.db.get_history_v2(guild_id, player, per_page, page, return_total=True)
 
     return jsonify({
-        "data": r,
+        "data": fix_history_order(r) if player else r,
         "paginate": {
             "current_page": page,
             "last_page": ceil(total_rows / per_page),
-            "per_page": per_page,
             "total": total_rows
         }
     })
+
+
+@app.route("/player/<uuidorname>")
+async def player(uuidorname):
+    r = await app.database_cache.get_player(uuidorname)
+    return jsonify(r) if r else {}
 
 
 @app.route("/autocomplete")
@@ -305,6 +378,11 @@ async def autocomplete():
 @app.errorhandler(404)
 async def page_not_found(e):
     return jsonify(404), 404
+
+
+@app.errorhandler(500)
+async def internal_error(e):
+    return jsonify(500), 500
 
 
 @app.before_serving
