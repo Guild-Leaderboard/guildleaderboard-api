@@ -7,7 +7,6 @@ from math import sin, ceil
 import aiohttp
 from dotenv import load_dotenv
 from quart import Quart, jsonify, request
-
 from utils.database import Database
 
 load_dotenv(".env")
@@ -61,8 +60,6 @@ class DatabaseCache:
             r = await self.app.db.get_guilds()
             res = []
             for guild in r:
-                if isinstance(guild["time_difference"], datetime.timedelta):
-                    guild["time_difference"] = str(guild["time_difference"])
                 guild["multiplier"] = weight_multiplier(guild["members"])
 
                 res.append(guild)
@@ -92,15 +89,9 @@ class DatabaseCache:
 
                 self.guilds[guild["id"]] = guild
                 self.guilds[guild["id"]]["get_time"] = Time().time
-                self.guilds[guild["id"]]["time_difference"] = str(
-                    self.guilds[guild["id"]]["time_difference"]
-                )
 
                 self.guilds[guild["name"]] = guild
                 self.guilds[guild["name"]]["get_time"] = Time().time
-                self.guilds[guild["name"]]["time_difference"] = str(
-                    self.guilds[guild["id"]]["time_difference"]
-                )
                 for player in guild["members"]:
                     for key, value in player.items():
                         if isinstance(value, datetime.timedelta):
@@ -115,7 +106,6 @@ class DatabaseCache:
             if not r:
                 return
             for guild_metric in r:
-                guild_metric["time_difference"] = str(guild_metric["time_difference"])
                 weight_m = weight_multiplier(guild_metric["member_count"])
                 guild_metric["senither_weight"] = round(guild_metric["senither_weight"] * weight_m, 2)
                 if guild_metric["lily_weight"] is None:
@@ -127,48 +117,6 @@ class DatabaseCache:
                 "get_time": Time().time,
             }
         return self.guild_metrics[guild_id]["d"]
-
-    async def get_guild_history(self, guild_id):
-        guild_history = self.guild_history.get(guild_id, {})
-
-        if not guild_history or Time().time - guild_history.get("get_time", 0) > 60:
-            r = await self.app.db.get_guild_history(guild_id)
-            if not r:
-                return
-            all_members_ever_uuid = []
-            previous_players = []
-            logs = {}
-            for i, guild_history in enumerate(r):
-                time_difference = str(guild_history["time_difference"])
-                # find when a player joined or left the guild
-                joined_players = [player for player in guild_history["players"] if
-                                  player not in previous_players] if i != 0 else []
-                left_players = [player for player in previous_players if player not in guild_history["players"]]
-                logs[time_difference] = {
-                    "joined": joined_players,
-                    "left": left_players,
-                }
-                previous_players = guild_history["players"]
-                all_members_ever_uuid.extend(joined_players + left_players)
-
-            all_members_ever = await self.app.db.get_names(all_members_ever_uuid)
-
-            r_list = []
-
-            for date, log in logs.items():
-                r_list.append({
-                    "date": date,
-                    "joined": [all_members_ever.get(uuid, uuid) for uuid in log["joined"]],
-                    "left": [all_members_ever.get(uuid, uuid) for uuid in log["left"]],
-                })
-            r_list = list(reversed(r_list))
-            self.guild_history[guild_id] = {
-                "d": r_list,
-                "get_time": Time().time,
-            }
-            return r_list
-
-        return self.guild_history[guild_id]["d"]
 
     async def get_player(self, uuid_or_name):
         player_data = self.player_data.get(uuid_or_name.lower(), {})
@@ -191,10 +139,10 @@ class DatabaseCache:
                 #
                 # if not r1:
                 r2 = await self.app.db.get_guild_player_from_guilds(r["uuid"], conn=conn)
-                time_difference: datetime.timedelta = r2["time_difference"]
+                time_difference: datetime.datetime = r2["capture_date"]
 
                 guild_name = r2["guild_name"] if r2 else None
-                if time_difference.total_seconds() >= 25 * 3600:
+                if (Time().datetime - time_difference).total_seconds() >= 25 * 3600:
                     guild_name = None
 
                 r["guild_name"] = guild_name
@@ -286,13 +234,13 @@ SELECT guild_name AS name FROM guilds WHERE guild_id = $1 LIMIT 1;
         }
 
         for guild_metric in r2:
-            r3["catacombs_data"].append([guild_metric['time_difference'], guild_metric["catacombs"]])
-            r3["skills_data"].append([guild_metric['time_difference'], guild_metric["skills"]])
-            r3["slayer_data"].append([guild_metric['time_difference'], guild_metric["slayer"]])
-            r3["senither_weight_data"].append([guild_metric['time_difference'], guild_metric["senither_weight"]])
-            r3["member_count_data"].append([guild_metric['time_difference'], guild_metric["member_count"]])
+            r3["catacombs_data"].append([guild_metric['capture_date'], guild_metric["catacombs"]])
+            r3["skills_data"].append([guild_metric['capture_date'], guild_metric["skills"]])
+            r3["slayer_data"].append([guild_metric['capture_date'], guild_metric["slayer"]])
+            r3["senither_weight_data"].append([guild_metric['capture_date'], guild_metric["senither_weight"]])
+            r3["member_count_data"].append([guild_metric['capture_date'], guild_metric["member_count"]])
             if guild_metric.get("lily_weight"):
-                r3["lily_weight_data"].append([guild_metric['time_difference'], guild_metric["lily_weight"]])
+                r3["lily_weight_data"].append([guild_metric['capture_date'], guild_metric["lily_weight"]])
 
         r4 = {}
         for key, value in r3.items():
@@ -307,8 +255,7 @@ SELECT guild_name AS name FROM guilds WHERE guild_id = $1 LIMIT 1;
 
 @app.route("/history/<guild_id>")
 async def history(guild_id):
-    r = await app.database_cache.get_guild_history(guild_id)
-    return jsonify(r)
+    return await history_v2(guild_id)
 
 
 def fix_history_order(history: list) -> list:
@@ -326,11 +273,16 @@ def fix_history_order(history: list) -> list:
             last_action = reverse_history[i]["type"]
             continue
         if last_action == reverse_history[i]["type"]:
-            new_history.insert(i, reverse_history[i + 1])
-            new_history.insert(i + 1, reverse_history[i])
-            last_action = reverse_history[i]["type"]
-            skip_next = True
-            continue
+            try:
+                new_history.insert(i, reverse_history[i + 1])
+                new_history.insert(i + 1, reverse_history[i])
+                last_action = reverse_history[i]["type"]
+                skip_next = True
+                continue
+            except IndexError:
+                new_history.append(reverse_history[i])
+                last_action = reverse_history[i]["type"]
+
         else:
             new_history.append(reverse_history[i])
             last_action = reverse_history[i]["type"]

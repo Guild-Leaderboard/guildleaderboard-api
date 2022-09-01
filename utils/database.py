@@ -112,7 +112,7 @@ SELECT
     guild_id AS id,
     guild_name AS name,
     array_length(players, 1) AS members,
-    NOW() - capture_date :: timestamptz at time zone 'UTC' AS time_difference,
+    capture_date,
     scammers,
     position_change
 FROM
@@ -135,7 +135,7 @@ SELECT
     guild_id AS id,
     guild_name AS name,
     players AS members,
-    Now() - capture_date :: timestamptz AT TIME zone 'UTC' AS time_difference,
+    capture_date,
     scammers
 FROM   
     guilds
@@ -160,7 +160,7 @@ SELECT
     ROUND(average_skill::numeric, 2)::float AS average_skill, 
     ROUND(catacombs::numeric, 2)::float AS catacombs, 
     ROUND(total_slayer::numeric, 2)::float AS total_slayer, 
-    NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference, 
+    capture_date, 
     scam_reason FROM players 
 WHERE 
     uuid = ANY($1);
@@ -180,22 +180,11 @@ SELECT
     ROUND(catacombs::numeric, 2)::float AS catacombs,
     ROUND(slayer::numeric, 2)::float AS slayer,
     cardinality(players) AS member_count,
-    NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference
+    capture_date
 FROM guilds
     WHERE guild_id = $1
     ORDER BY capture_date
         """, str(guild_id))
-        return [self.format_json(row) for row in r] if r else []
-
-    async def get_guild_history(self, guild_id):
-        r = await self.pool.fetch("""
-SELECT
-    players,
-    NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference
-FROM guilds
-    WHERE guild_id = $1
-ORDER BY capture_date
-    """, str(guild_id))
         return [self.format_json(row) for row in r] if r else []
 
     async def get_history_v2(self, guild_id=None, player=None, per_page=10, page=1, return_total=False):
@@ -208,7 +197,7 @@ SELECT
     type,
     {'uuid, name, ' if guild_id else ''}
     {'guild_id, guild_name,' if player else ''}
-    NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference
+    capture_date
 FROM history
 WHERE 
     {'guild_id = $1' if guild_id else ''} 
@@ -283,7 +272,7 @@ LIMIT 1;
         query_str = """
 SELECT 
     guild_name,
-    NOW() - capture_date::timestamptz at time zone 'UTC' AS time_difference
+    capture_date
 FROM guilds
 WHERE $1 = ANY(players)    
 ORDER by capture_date DESC 
