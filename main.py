@@ -7,6 +7,7 @@ from math import sin, ceil
 import aiohttp
 from dotenv import load_dotenv
 from quart import Quart, jsonify, request
+
 from utils.database import Database
 
 load_dotenv(".env")
@@ -52,8 +53,8 @@ class DatabaseCache:
         self._all_guilds_time = None
         self.guilds = {}
         self.guild_metrics = {}
-        self.guild_history = {}
         self.player_data = {}
+        self.player_metrics = {}
 
     async def get_guilds(self):
         if not self._all_guilds or Time().time - self._all_guilds_time > 60:
@@ -123,7 +124,7 @@ class DatabaseCache:
 
         if not player_data or Time().time - player_data.get("get_time", 0) > 60:
             async with app.db.pool.acquire() as conn:
-                if re.match(r"[a-z-0-9]{32}", uuid_or_name):
+                if re.match(r"[0-9a-f]{32}", uuid_or_name):
                     r = await self.app.db.get_player(uuid=uuid_or_name, conn=conn)
                     if not r:
                         r = await self.app.db.get_player(name=uuid_or_name, conn=conn)
@@ -157,6 +158,45 @@ class DatabaseCache:
 
         return self.player_data[uuid_or_name.lower()]["d"]
 
+    async def get_player_metrics(self, uuid_or_name):
+        player_metrics = self.player_metrics.get(uuid_or_name, {})
+
+        if not player_metrics or Time().time - player_metrics.get("get_time", 0) > 60:
+            async with app.db.pool.acquire() as conn:
+                if re.match(r"[0-9a-f]{32}", uuid_or_name):
+                    r = await self.app.db.get_player_metrics(uuid=uuid_or_name, conn=conn)
+                    if not r:
+                        r = await self.app.db.get_player_metrics(name=uuid_or_name, conn=conn)
+                else:
+                    r = await self.app.db.get_player_metrics(name=uuid_or_name, conn=conn)
+                    if not r:
+                        r = await self.app.db.get_player_metrics(uuid=uuid_or_name, conn=conn)
+            if not r:
+                return None
+            dic1 = {
+                "d": r,
+                "get_time": Time().time,
+            }
+
+            self.player_metrics[r[0]['name'].lower()] = dic1
+            self.player_metrics[r[0]['uuid']] = dic1
+        return self.player_metrics[uuid_or_name.lower()]["d"]
+
+    async def clean_db(self):
+        while True:
+            await asyncio.sleep(30)
+            for key, value in self.guilds.copy().items():
+                if Time().time - value.get("get_time", 0) > 60:
+                    del self.guilds[key]
+
+            for key, value in self.player_data.copy().items():
+                if Time().time - value.get("get_time", 0) > 60:
+                    del self.player_data[key]
+
+            for key, value in self.guild_metrics.copy().items():
+                if Time().time - value.get("get_time", 0) > 60:
+                    del self.guild_metrics[key]
+
 
 class App(Quart):
     def __init__(self, *args, **kwargs):
@@ -188,7 +228,7 @@ async def stats():
     r = await app.database_cache.get_guilds()
     guilds_tracked = len(r)
     players_tracked = sum([i["members"] for i in r])
-    if Time().time - app.patreon_last_get >= 86400:
+    if Time().time - app.patreon_last_get >= 3600:
         app.patrons = await app.get_patreon_members()
         app.patreon_last_get = Time().time
 
@@ -212,12 +252,15 @@ async def guild(guild_id):
 
 @app.route("/metrics/<guild_id>")
 async def metrics(guild_id):
+    app.logger.error('Deprecated endpoint used: /metrics/<guild_id>')
+    return await guild_metrics(guild_id)
+
+
+@app.route("/metrics/guild/<guild_id>")
+async def guild_metrics(guild_id):
     r = await app.database_cache.get_guild_metrics(guild_id)
-    try:
-        r2 = r.copy()
-        del r2["get_time"]
-    except:
-        r2 = r
+    if not r:
+        return jsonify([])
 
     if request.args.get('format', False):
         guild_name = (await app.db.pool.fetchrow("""
@@ -233,7 +276,7 @@ SELECT guild_name AS name FROM guilds WHERE guild_id = $1 LIMIT 1;
             "member_count_data": []
         }
 
-        for guild_metric in r2:
+        for guild_metric in r:
             r3["catacombs_data"].append([guild_metric['capture_date'], guild_metric["catacombs"]])
             r3["skills_data"].append([guild_metric['capture_date'], guild_metric["skills"]])
             r3["slayer_data"].append([guild_metric['capture_date'], guild_metric["slayer"]])
@@ -250,12 +293,13 @@ SELECT guild_name AS name FROM guilds WHERE guild_id = $1 LIMIT 1;
             }
         return jsonify(r4)
 
-    return jsonify(r2)
+    return jsonify(r)
 
 
-@app.route("/history/<guild_id>")
-async def history(guild_id):
-    return await history_v2(guild_id)
+@app.route("/metrics/player/<uuid>")
+async def player_metrics(uuid):
+    r = await app.database_cache.get_player_metrics(uuid)
+    return jsonify(r)
 
 
 def fix_history_order(history: list) -> list:
@@ -318,7 +362,7 @@ async def history_v2():
 @app.route("/player/<uuidorname>")
 async def player(uuidorname):
     r = await app.database_cache.get_player(uuidorname)
-    return jsonify(r) if r else {}
+    return jsonify(r)
 
 
 @app.route("/autocomplete")
@@ -341,6 +385,7 @@ async def internal_error(e):
 async def start_up():
     if not app.loop:
         app.loop = asyncio.get_event_loop()
+        app.loop.create_task(app.database_cache.clean_db())
     if not app.db:
         app.db = await Database(app).open()
     if not app.session:
