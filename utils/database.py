@@ -37,9 +37,6 @@ CREATE TABLE players (
     uuid TEXT UNIQUE,
     name TEXT,
     senither_weight REAL,
-    skill_weight REAL,
-    slayer_weight REAL,
-    dungeon_weight REAL,
     average_skill REAL,
     catacombs REAL,
     catacomb_xp REAL,
@@ -330,7 +327,6 @@ ORDER BY capture_date
             r = await conn.fetch(query_str, uuid if uuid else name)
         else:
             r = await self.pool.fetch(query_str, uuid if uuid else name)
-        print(r)
         return [self.format_json(row) for row in r] if r else []
 
     # nothing
