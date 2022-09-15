@@ -220,7 +220,7 @@ class App(FastAPI):
             return data["message"].replace(" patrons", "")
 
 
-app: App = App()
+app: App = App(openapi_url="")
 
 app.add_middleware(
     CORSMiddleware,
