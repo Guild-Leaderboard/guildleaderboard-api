@@ -29,7 +29,9 @@ CREATE TABLE guilds (
     slayer REAL,
     scammers SMALLINT,
     position_change SMALLINT,
-    lily_weight REAL
+    lily_weight REAL,
+    networth BIGINT
+
 )
 guilds.players is an aray of uuids
 
@@ -43,7 +45,8 @@ CREATE TABLE players (
     total_slayer REAL,
     capture_date TIMESTAMP,
     scam_reason TEXT,
-    lily_weight REAL
+    lily_weight REAL,
+    networth BIGINT
 )
 
 CREATE TABLE player_metrics (
@@ -53,6 +56,7 @@ CREATE TABLE player_metrics (
 
     senither_weight REAL,
     lily_weight REAL,
+    networth BIGINT,
 
     zombie_xp BIGINT,
     spider_xp BIGINT,
@@ -102,7 +106,8 @@ CREATE TABLE history (
     uuid TEXT,
     name TEXT,
     capture_date TIMESTAMP,
-    guild_id TEXT
+    guild_id TEXT,
+    guild_name TEXT
 )
 """
 
@@ -164,6 +169,7 @@ SELECT
     ROUND(slayer :: numeric, 2):: float AS slayer,
     ROUND(senither_weight :: numeric, 2):: float AS senither_weight,
     ROUND(lily_weight :: numeric, 2):: float AS lily_weight,
+    networth,
     guild_id AS id,
     guild_name AS name,
     array_length(players, 1) AS members,
@@ -187,6 +193,7 @@ SELECT
     Round(slayer :: NUMERIC, 2) :: FLOAT AS slayer,
     Round(senither_weight :: NUMERIC, 2) :: FLOAT AS senither_weight,
     Round(lily_weight :: NUMERIC, 2) :: FLOAT AS lily_weight,
+    networth,
     guild_id AS id,
     guild_name AS name,
     players AS members,
@@ -194,7 +201,7 @@ SELECT
     scammers
 FROM   
     guilds
-WHERE {'guild_name = $1' if guild_name else 'guild_id = $1'}
+WHERE {'lower(guild_name) = lower($1)' if guild_name else 'guild_id = $1'}
 ORDER BY
     guild_id,
     capture_date DESC; 
@@ -213,6 +220,7 @@ SELECT
     ROUND(skills::numeric, 2)::float AS skills,
     ROUND(catacombs::numeric, 2)::float AS catacombs,
     ROUND(slayer::numeric, 2)::float AS slayer,
+    networth,
     cardinality(players) AS member_count,
     capture_date
 FROM guilds
@@ -288,6 +296,7 @@ SELECT
     ROUND(average_skill::numeric, 2)::float AS average_skill, 
     ROUND(catacombs::numeric, 2)::float AS catacombs, 
     ROUND(total_slayer::numeric, 2)::float AS total_slayer, 
+    networth,
     capture_date, 
     scam_reason FROM players 
 WHERE 

@@ -226,7 +226,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://localhost:3001",
         "https://guildleaderboard.com",
+        'https://guildleaderboard-frontend-next.vercel.app/',
+        '*'
+
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -245,6 +249,7 @@ async def stats():
     r = await app.database_cache.get_guilds()
     guilds_tracked = len(r)
     players_tracked = sum([i["members"] for i in r])
+    sorted_guilds = sorted(r, key=lambda x: x["senither_weight"] * x["multiplier"], reverse=True)
     if Time().time - app.patreon_last_get >= 3600:
         app.patrons = await app.get_patreon_members()
         app.patreon_last_get = Time().time
@@ -253,6 +258,7 @@ async def stats():
         "guilds_tracked": guilds_tracked,
         "players_tracked": players_tracked,
         "patrons": app.patrons,
+        "top_guilds": sorted_guilds[:3],
     }
 
 
