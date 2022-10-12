@@ -220,7 +220,8 @@ class App(FastAPI):
             return data["message"].replace(" patrons", "")
 
 
-app: App = App(openapi_url="")
+app: App = App(redoc_url="/randomurlthatnooneshouldbeabletofind",
+               openapi_url='/randomurlthatnooneshouldbeabletofindopenapi', docs_url=None)
 
 app.add_middleware(
     CORSMiddleware,
@@ -354,6 +355,31 @@ async def player(uuidorname: str):
 async def autocomplete():
     r = await app.db.get_id_name_autocomplete()
     return r
+
+
+@app.get("/sitemapurls")
+async def sitemapurls():
+    urls = {
+        "guilds": [],
+        "players": []
+    }
+    async with app.db.pool.acquire() as conn:
+        r = await conn.fetch("""
+SELECT 
+    DISTINCT ON (guild_id) 
+    guild_name AS name
+FROM   
+    guilds
+ORDER BY
+    guild_id
+        """)
+        for i in r:
+            urls["guilds"].append(i['name'])
+
+        r = await conn.fetch("SELECT name FROM players")
+        for i in r:
+            urls["players"].append(i['name'])
+    return urls
 
 
 @app.on_event('startup')
