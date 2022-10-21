@@ -145,13 +145,14 @@ class DatabaseCache:
                 #
                 # if not r1:
                 r2 = await self.app.db.get_guild_player_from_guilds(r["uuid"], conn=conn)
-                time_difference: datetime.datetime = r2["capture_date"]
+                if not r2:
+                    r["guild_name"] = None
+                else:
+                    time_difference: datetime.datetime = r2["capture_date"]
 
-                guild_name = r2["guild_name"] if r2 else None
-                if (Time().datetime - time_difference).total_seconds() >= 25 * 3600:
-                    guild_name = None
-
-                r["guild_name"] = guild_name
+                    r["guild_name"] = r2["guild_name"] if r2 else None
+                    if (Time().datetime - time_difference).total_seconds() >= 25 * 3600:
+                        r["guild_name"] = None
 
                 player_data = {
                     "d": r,
@@ -365,20 +366,30 @@ async def sitemapurls():
     }
     async with app.db.pool.acquire() as conn:
         r = await conn.fetch("""
-SELECT 
-    DISTINCT ON (guild_id) 
+SELECT
+    DISTINCT ON (guild_id)
     guild_name AS name
-FROM   
+FROM
     guilds
+WHERE
+    capture_date > NOW() - INTERVAL '25 hours'
 ORDER BY
     guild_id
         """)
         for i in r:
-            urls["guilds"].append(i['name'])
+            urls["guilds"].append(i["name"])
 
-        r = await conn.fetch("SELECT name FROM players")
+        r = await conn.fetch("""
+SELECT
+    name
+FROM
+    players
+WHERE
+    capture_date > NOW() - INTERVAL '25 hours'
+        """)
         for i in r:
-            urls["players"].append(i['name'])
+            urls["players"].append(i["name"])
+
     return urls
 
 
