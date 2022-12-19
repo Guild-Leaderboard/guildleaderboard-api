@@ -146,7 +146,8 @@ CREATE TABLE history (
     def format_json(self, record: asyncpg.Record) -> dict:
         if record is None:
             return None
-        return {key: (str(value) if key in self.str_keys else (round(value, 2) if isinstance(value, float) else value)) for (key, value) in dict(record).items()}
+        return {key: (str(value) if key in self.str_keys else (round(value, 2) if isinstance(value, float) else value))
+                for (key, value) in dict(record).items()}
 
     async def get_id_name_autocomplete(self):
         r = await self.pool.fetch("""
@@ -298,7 +299,8 @@ SELECT
     ROUND(total_slayer::numeric, 2)::float AS total_slayer, 
     networth,
     capture_date, 
-    scam_reason FROM players 
+    scam_reason 
+FROM players 
 WHERE 
     uuid = ANY($1);
         """
@@ -324,7 +326,7 @@ LIMIT 1;
             r = await self.pool.fetchrow(query_str, uuid)
         return dict(r) if r else None
 
-    async def get_player_metrics(self, uuid: str = None, name:str = None, conn=None) -> List[dict]:
+    async def get_player_metrics(self, uuid: str = None, name: str = None, conn=None) -> List[dict]:
         query_str = f"""
 SELECT
     *
@@ -345,6 +347,43 @@ INSERT INTO guild_information (guild_id, discord)
 VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET discord = $2;
         """
         await self.pool.execute(query_str, guild_id, discordid)
+
+    async def get_player_page(
+            self, sort_by: str, reverse: bool = False, page=1, return_total=False, username: str = None
+    ):
+        if sort_by not in [
+            "senither_weight", "lily_weight", "average_skill", "catacombs", "catacomb_xp", "total_slayer", "networth"
+        ]:
+            raise ValueError("Invalid sort_by value")
+
+        offset = (page - 1) * 25
+
+        qry_str = f"""
+SELECT
+    *,
+(SELECT count(*) FROM players WHERE {sort_by} IS NOT NULL AND {sort_by} > p.{sort_by}) + 1 AS position
+FROM players p
+    WHERE {sort_by} IS NOT NULL {'AND starts_with(lower(name), lower($2))' if username else ''}
+ORDER by {sort_by} {'' if reverse else 'DESC'}
+OFFSET $1
+LIMIT 25;
+        """
+        args = [int(offset), username] if username else [int(offset)]
+
+        r = await self.pool.fetch(qry_str, *args)
+        r_vals = [[self.format_json(row) for row in r] if r else []]
+
+        if return_total:
+            args = [username] if username else []
+            total = await self.pool.fetchval(f"""
+SELECT 
+    count(*) 
+FROM players 
+WHERE {sort_by} IS NOT NULL {'AND starts_with(lower(name), lower($1))' if username else ''}
+""", *args)
+            r_vals.append(total)
+
+        return r_vals
 
 #    async def get_guild_player_from_history(self, uuid: str, conn=None) -> str:
 #         query_str = """

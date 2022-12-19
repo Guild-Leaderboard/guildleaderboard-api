@@ -246,6 +246,21 @@ async def leaderboard():
     return r
 
 
+@app.get("/leaderboard/player")
+async def playerleaderboard(
+        sort_by: str = 'senither_weight', page: int = 1, reverse: bool = False, username: str = None
+):
+    r, total_rows = await app.db.get_player_page(sort_by, reverse, page, username=username, return_total=True)
+    return {
+        "data": r,
+        "paginate": {
+            "current_page": page,
+            "last_page": ceil(total_rows / 25),
+            "total": total_rows
+        }
+    }
+
+
 @app.get("/stats")
 async def stats():
     r = await app.database_cache.get_guilds()
