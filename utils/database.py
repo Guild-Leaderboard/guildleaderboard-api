@@ -357,21 +357,24 @@ VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET discord = $2;
             raise ValueError("Invalid sort_by value")
 
         offset = (page - 1) * 25
+        # (SELECT guild_name FROM guilds WHERE uuid = ANY(players) ORDER BY capture_date DESC LIMIT 1) AS guild_name
+        # (SELECT count(*) FROM players WHERE {sort_by} IS NOT NULL AND (NOW()::date - '3 day'::interval) < capture_date AND {sort_by} > p.{sort_by}) + 1 AS position
 
+        # get the position of the player
         qry_str = f"""
 SELECT
-    *,
-(SELECT count(*) FROM players WHERE {sort_by} IS NOT NULL AND {sort_by} > p.{sort_by}) + 1 AS position
-FROM players p
-    WHERE {sort_by} IS NOT NULL {'AND starts_with(lower(name), lower($2))' if username else ''}
+    *
+    {f", (SELECT count(*) FROM players WHERE {sort_by} IS NOT NULL AND (NOW()::date - '3 day'::interval) < capture_date AND {sort_by} > p.{sort_by}) + 1 AS position" if username else ''}    
+FROM players {f'p' if username else ''}
+    WHERE {sort_by} IS NOT NULL AND (NOW()::date - '3 day'::interval) < capture_date {'AND starts_with(lower(name), lower($2))' if username else ''}
 ORDER by {sort_by} {'' if reverse else 'DESC'}
 OFFSET $1
 LIMIT 25;
         """
         args = [int(offset), username] if username else [int(offset)]
-
         r = await self.pool.fetch(qry_str, *args)
         r_vals = [[self.format_json(row) for row in r] if r else []]
+        # get the position of the players
 
         if return_total:
             args = [username] if username else []
@@ -379,7 +382,7 @@ LIMIT 25;
 SELECT 
     count(*) 
 FROM players 
-WHERE {sort_by} IS NOT NULL {'AND starts_with(lower(name), lower($1))' if username else ''}
+WHERE {sort_by} IS NOT NULL AND (NOW()::date - '3 day'::interval) < capture_date {'AND starts_with(lower(name), lower($1))' if username else ''}
 """, *args)
             r_vals.append(total)
 
