@@ -30,8 +30,8 @@ CREATE TABLE guilds (
     scammers SMALLINT,
     position_change SMALLINT,
     lily_weight REAL,
-    networth BIGINT
-
+    networth BIGINT,
+    sb_experience BIGINT
 )
 guilds.players is an aray of uuids
 
@@ -46,7 +46,8 @@ CREATE TABLE players (
     capture_date TIMESTAMP,
     scam_reason TEXT,
     lily_weight REAL,
-    networth BIGINT
+    networth BIGINT,
+    sb_experience BIGINT
 )
 
 CREATE TABLE player_metrics (
@@ -57,7 +58,7 @@ CREATE TABLE player_metrics (
     senither_weight REAL,
     lily_weight REAL,
     networth BIGINT,
-
+    sb_experience BIGINT,
     zombie_xp BIGINT,
     spider_xp BIGINT,
     wolf_xp BIGINT,
@@ -93,7 +94,9 @@ CREATE TABLE player_metrics (
     enchanting REAL,
     enchanting_xp BIGINT,
     alchemy REAL,
-    alchemy_xp BIGINT
+    alchemy_xp BIGINT,
+    carpentry REAL,
+    carpentry_xp BIGINT
 )
 
 CREATE TABLE guild_information (
@@ -171,6 +174,7 @@ SELECT
     ROUND(senither_weight :: numeric, 2):: float AS senither_weight,
     ROUND(lily_weight :: numeric, 2):: float AS lily_weight,
     networth,
+    sb_experience,
     guild_id AS id,
     guild_name AS name,
     array_length(players, 1) AS members,
@@ -195,6 +199,7 @@ SELECT
     Round(senither_weight :: NUMERIC, 2) :: FLOAT AS senither_weight,
     Round(lily_weight :: NUMERIC, 2) :: FLOAT AS lily_weight,
     networth,
+    sb_experience,
     guild_id AS id,
     guild_name AS name,
     players AS members,
@@ -222,6 +227,7 @@ SELECT
     ROUND(catacombs::numeric, 2)::float AS catacombs,
     ROUND(slayer::numeric, 2)::float AS slayer,
     networth,
+    sb_experience,
     cardinality(players) AS member_count,
     capture_date
 FROM guilds
@@ -298,6 +304,7 @@ SELECT
     ROUND(catacombs::numeric, 2)::float AS catacombs, 
     ROUND(total_slayer::numeric, 2)::float AS total_slayer, 
     networth,
+    sb_experience,
     capture_date, 
     scam_reason 
 FROM players 
@@ -352,7 +359,7 @@ VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET discord = $2;
             self, sort_by: str, reverse: bool = False, page=1, return_total=False, username: str = None
     ):
         if sort_by not in [
-            "senither_weight", "lily_weight", "average_skill", "catacombs", "catacomb_xp", "total_slayer", "networth"
+            "senither_weight", "lily_weight", "average_skill", "catacombs", "catacomb_xp", "total_slayer", "networth", 'sb_experience'
         ]:
             raise ValueError("Invalid sort_by value")
 
