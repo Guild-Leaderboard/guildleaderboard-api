@@ -5,14 +5,15 @@ import os
 import re
 from logging.config import dictConfig
 from math import sin, ceil
-
+import json
 import aiohttp
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
+import time
 from custom_logger import LogConfig
-from utils.database import Database
+from utils.database2 import Database2
+from utils.cache import Cache
 
 load_dotenv(".env")
 dictConfig(LogConfig().dict())
@@ -54,24 +55,10 @@ class Time:
 class DatabaseCache:
     def __init__(self, app):
         self.app: App = app
-        self._all_guilds = None
-        self._all_guilds_time = None
         self.guilds = {}
         self.guild_metrics = {}
         self.player_data = {}
         self.player_metrics = {}
-
-    async def get_guilds(self):
-        if not self._all_guilds or Time().time - self._all_guilds_time > 60:
-            r = await self.app.db.get_guilds()
-            res = []
-            for guild in r:
-                guild["multiplier"] = weight_multiplier(guild["members"])
-
-                res.append(guild)
-            self._all_guilds = res
-            self._all_guilds_time = Time().time
-        return self._all_guilds
 
     async def get_guild(self, guild_id_or_name):
         guild = self.guilds.get(guild_id_or_name, {})
@@ -207,10 +194,13 @@ class DatabaseCache:
 class App(FastAPI):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.db: Database = None
+        self.db: Database2 = None
+        self.cache: Cache = None
         self.loop: asyncio.BaseEventLoop = None
         self.session: aiohttp.ClientSession = None
+
         self.database_cache: DatabaseCache = DatabaseCache(self)
+
         self.logger = logging.getLogger("mycoolapp")
         self.patrons = None
         self.patreon_last_get = 0
@@ -242,8 +232,7 @@ app.add_middleware(
 
 @app.get("/leaderboard")
 async def leaderboard():
-    r = await app.database_cache.get_guilds()
-    return r
+    return await app.cache.jget("guilds")
 
 
 @app.get("/leaderboard/player")
@@ -263,20 +252,8 @@ async def playerleaderboard(
 
 @app.get("/stats")
 async def stats():
-    r = await app.database_cache.get_guilds()
-    guilds_tracked = len(r)
-    players_tracked = sum([i["members"] for i in r])
-    sorted_guilds = sorted(r, key=lambda x: x["senither_weight"] * x["multiplier"], reverse=True)
-    if Time().time - app.patreon_last_get >= 3600:
-        app.patrons = await app.get_patreon_members()
-        app.patreon_last_get = Time().time
+    return await app.cache.jget("stats")
 
-    return {
-        "guilds_tracked": guilds_tracked,
-        "players_tracked": players_tracked,
-        "patrons": app.patrons,
-        "top_guilds": sorted_guilds[:3],
-    }
 
 
 @app.get("/guild/{guild_id}")
@@ -412,9 +389,14 @@ WHERE
 async def start_up():
     if not app.loop:
         app.loop = asyncio.get_event_loop()
-        app.loop.create_task(app.database_cache.clean_db())
+        # app.loop.create_task(app.database_cache.clean_db())
     if not app.db:
-        app.db = await Database(app).open()
+        app.db = Database2(app)
+    if not app.cache:
+        app.cache = Cache(app)
+        app.loop.create_task(app.cache.update_cache())
+
+
     if not app.session:
         app.session = aiohttp.ClientSession(loop=app.loop)
         app.patrons = await app.get_patreon_members()

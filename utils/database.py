@@ -18,23 +18,6 @@ DB_PWD = os.getenv("DB_PWD")
 
 class Database:
     """
-CREATE TABLE guilds (
-    guild_id TEXT,
-    guild_name TEXT,
-    capture_date TIMESTAMP,
-    players TEXT[],
-    senither_weight REAL,
-    skills REAL,
-    catacombs REAL,
-    slayer REAL,
-    scammers SMALLINT,
-    position_change SMALLINT,
-    lily_weight REAL,
-    networth BIGINT,
-    sb_experience BIGINT
-)
-guilds.players is an aray of uuids
-
 CREATE TABLE players (
     uuid TEXT UNIQUE,
     name TEXT,
@@ -98,20 +81,6 @@ CREATE TABLE player_metrics (
     carpentry REAL,
     carpentry_xp BIGINT
 )
-
-CREATE TABLE guild_information (
-    guild_id TEXT,
-    discord TEXT
-)
-
-CREATE TABLE history (
-    type TEXT,
-    uuid TEXT,
-    name TEXT,
-    capture_date TIMESTAMP,
-    guild_id TEXT,
-    guild_name TEXT
-)
 """
 
     pool: asyncpg.pool.Pool = None
@@ -152,134 +121,11 @@ CREATE TABLE history (
         return {key: (str(value) if key in self.str_keys else (round(value, 2) if isinstance(value, float) else value))
                 for (key, value) in dict(record).items()}
 
-    async def get_id_name_autocomplete(self):
-        r = await self.pool.fetch("""
-SELECT DISTINCT ON (guild_id) guild_id, guild_name FROM guilds ORDER BY guild_id, capture_date DESC;""")
-        return [{"id": row['guild_id'], "name": row['guild_name']} for row in r]
 
     async def get_names(self, uuids):
         r = await self.pool.fetch("""
 SELECT uuid, name FROM players WHERE uuid = ANY($1)""", uuids)
         return {row['uuid']: row['name'] for row in r}
-
-    # Guilds
-
-    async def get_guilds(self):
-        r = await self.pool.fetch("""
-SELECT
-    DISTINCT ON (guild_id) 
-    ROUND(catacombs :: numeric, 2):: float AS catacombs,
-    ROUND(skills :: numeric, 2):: float AS skills,
-    ROUND(slayer :: numeric, 2):: float AS slayer,
-    ROUND(senither_weight :: numeric, 2):: float AS senither_weight,
-    ROUND(lily_weight :: numeric, 2):: float AS lily_weight,
-    networth,
-    sb_experience,
-    guild_id AS id,
-    guild_name AS name,
-    array_length(players, 1) AS members,
-    capture_date,
-    scammers,
-    position_change
-FROM
-    guilds
-ORDER BY
-    guild_id,
-    capture_date DESC;
-        """)
-        return [self.format_json(row) for row in r]
-
-    async def get_guild(self, guild_id=None, guild_name=None, conn=None):
-        query_str = f"""
-SELECT 
-    DISTINCT ON (guild_id) 
-    Round(catacombs :: numeric, 2) :: float AS catacombs,
-    Round(skills :: NUMERIC, 2) :: FLOAT AS skills,
-    Round(slayer :: NUMERIC, 2) :: FLOAT AS slayer,
-    Round(senither_weight :: NUMERIC, 2) :: FLOAT AS senither_weight,
-    Round(lily_weight :: NUMERIC, 2) :: FLOAT AS lily_weight,
-    networth,
-    sb_experience,
-    guild_id AS id,
-    guild_name AS name,
-    players AS members,
-    capture_date,
-    scammers
-FROM   
-    guilds
-WHERE {'lower(guild_name) = lower($1)' if guild_name else 'guild_id = $1'}
-ORDER BY
-    guild_id,
-    capture_date DESC; 
-        """
-        if conn:
-            r = await conn.fetchrow(query_str, guild_name if guild_name else guild_id)
-        else:
-            r = await self.pool.fetchrow(query_str, guild_name if guild_name else guild_id)
-        return self.format_json(r)
-
-    async def get_guild_metrics(self, guild_id):
-        r = await self.pool.fetch("""
-SELECT
-    ROUND(senither_weight::numeric, 2)::float AS senither_weight,
-    Round(lily_weight :: NUMERIC, 2) :: FLOAT AS lily_weight,
-    ROUND(skills::numeric, 2)::float AS skills,
-    ROUND(catacombs::numeric, 2)::float AS catacombs,
-    ROUND(slayer::numeric, 2)::float AS slayer,
-    networth,
-    sb_experience,
-    cardinality(players) AS member_count,
-    capture_date
-FROM guilds
-    WHERE guild_id = $1
-    ORDER BY capture_date
-        """, str(guild_id))
-        return [self.format_json(row) for row in r] if r else []
-
-    async def get_history_v2(self, guild_id=None, player=None, per_page=10, page=1, return_total=False):
-        offset = (page - 1) * per_page
-        if guild_id:
-            player = None
-        r = await self.pool.fetch(f"""
-
-SELECT 
-    type,
-    {'uuid, name, ' if guild_id else ''}
-    {'guild_id, guild_name,' if player else ''}
-    capture_date
-FROM history
-WHERE 
-    {'guild_id = $1' if guild_id else ''} 
-    {'uuid = $1' if player else ''}
-ORDER by capture_date DESC, uuid
-OFFSET $2
-LIMIT $3;
-    """, guild_id if guild_id else player, int(offset), int(per_page))
-        r_vals = [[self.format_json(row) for row in r] if r else []]
-
-        if return_total:
-            total = await self.pool.fetchval(f"""
-            SELECT 
-                count(*)
-            FROM history
-            WHERE 
-                {'guild_id = $1' if guild_id else ''} 
-                {'uuid = $1' if player else ''}
-            ;
-                """, guild_id if guild_id else player)
-            r_vals.append(total)
-
-        return r_vals
-
-    async def get_guild_discord(self, guild_id: str, conn=None):
-        query_str = """
-SELECT discord FROM guild_information WHERE guild_id = $1;
-        """
-        if conn:
-            r = await conn.fetchrow(query_str, guild_id)
-        else:
-            r = await self.pool.fetchrow(query_str, guild_id)
-        return r["discord"] if r else None
 
     # Player
 
@@ -317,22 +163,6 @@ WHERE
             r = await self.pool.fetch(query_str, uuids)
         return [self.format_json(row) for row in r]
 
-    async def get_guild_player_from_guilds(self, uuid: str, conn=None) -> str:
-        query_str = """
-SELECT 
-    guild_name,
-    capture_date
-FROM guilds
-WHERE $1 = ANY(players)    
-ORDER by capture_date DESC 
-LIMIT 1;
-            """
-        if conn:
-            r = await conn.fetchrow(query_str, uuid)
-        else:
-            r = await self.pool.fetchrow(query_str, uuid)
-        return dict(r) if r else None
-
     async def get_player_metrics(self, uuid: str = None, name: str = None, conn=None) -> List[dict]:
         query_str = f"""
 SELECT
@@ -346,14 +176,6 @@ ORDER BY capture_date
         else:
             r = await self.pool.fetch(query_str, uuid if uuid else name)
         return [self.format_json(row) for row in r] if r else []
-
-    # nothing
-    async def upsert_guild_info(self, guild_id: str, discordid: str):
-        query_str = """
-INSERT INTO guild_information (guild_id, discord)
-VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET discord = $2;
-        """
-        await self.pool.execute(query_str, guild_id, discordid)
 
     async def get_player_page(
             self, sort_by: str, reverse: bool = False, page=1, return_total=False, username: str = None
@@ -395,18 +217,3 @@ WHERE {sort_by} IS NOT NULL AND (NOW()::date - '3 day'::interval) < capture_date
 
         return r_vals
 
-#    async def get_guild_player_from_history(self, uuid: str, conn=None) -> str:
-#         query_str = """
-# SELECT
-#     guild_name,
-#     type
-# FROM history
-# WHERE uuid = $1 AND type = '1'
-# ORDER by capture_date DESC
-# LIMIT 1;
-#         """
-#         if conn:
-#             r = await conn.fetchrow(query_str, uuid)
-#         else:
-#             r = await self.pool.fetchrow(query_str, uuid)
-#         return dict(r) if r else None

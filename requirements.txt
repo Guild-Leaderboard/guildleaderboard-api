@@ -1,6 +1,7 @@
-asyncpg
+pymongo
 aiohttp
 quart
 nbt
 wrapt
 python-dotenv
+redis
