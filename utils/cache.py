@@ -20,11 +20,12 @@ class Cache:
         self.update_times = {
             "guilds": [300, 0],
             "stats": [3600, 0],
+            "guild": [240, 0],
+            "autocomplete": [600, 0],
         }
 
     async def jget(self, key):
         return json.loads(await self.rd.get(key))
-
 
     async def update_cache(self):
         while True:
@@ -45,6 +46,24 @@ class Cache:
                     "top_guilds": sorted(r, key=lambda x: x["weighted_stats"].split(",")[6], reverse=True)[:3],
                 }))
                 self.update_times["stats"][1] = time.time()
+
+            if time.time() - self.update_times["guild"][1] >= self.update_times["guild"][0]:
+                guild_id_list = []
+                for guild in await self.jget("guilds"):
+                    await self.rd.set(f'guild_{guild["_id"]}', json.dumps(self.db.get_guild(guild["_id"])))
+                    await self.rd.set(f'guild_{guild["_id"]}_metrics', json.dumps(self.db.get_guild_metrics(guild["_id"])))
+                    guild_id_list.append(guild["_id"])
+
+                # delete guilds that are no longer in the database
+                keys = await self.rd.keys("guild_*")
+                for key in keys:
+                    if key.split("_")[1] not in guild_id_list:
+                        await self.rd.delete(key)
+                self.update_times["guild"][1] = time.time()
+
+            if time.time() - self.update_times["autocomplete"][1] >= self.update_times["autocomplete"][0]:
+                await self.rd.set("autocomplete", json.dumps(self.db.get_id_name_autocomplete()))
+                self.update_times["autocomplete"][1] = time.time()
 
             await asyncio.sleep(5)
 

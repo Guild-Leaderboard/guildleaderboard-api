@@ -5,15 +5,15 @@ import os
 import re
 from logging.config import dictConfig
 from math import sin, ceil
-import json
+
 import aiohttp
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import time
+
 from custom_logger import LogConfig
-from utils.database2 import Database2
 from utils.cache import Cache
+from utils.database2 import Database2
 
 load_dotenv(".env")
 dictConfig(LogConfig().dict())
@@ -77,8 +77,6 @@ class DatabaseCache:
                     return
 
                 guild["members"] = await app.db.get_players(guild["members"], conn)
-                guild["discord"] = await app.db.get_guild_discord(guild["id"], conn)
-                guild["multiplier"] = weight_multiplier(len(guild["members"]))
 
                 self.guilds[guild["id"]] = guild
                 self.guilds[guild["id"]]["get_time"] = Time().time
@@ -90,26 +88,6 @@ class DatabaseCache:
                         if isinstance(value, datetime.timedelta):
                             player[key] = str(value)
         return guild
-
-    async def get_guild_metrics(self, guild_id):
-        guild_metrics = self.guild_metrics.get(guild_id, {})
-
-        if not guild_metrics or Time().time - guild_metrics.get("get_time", 0) > 60:
-            r = await self.app.db.get_guild_metrics(guild_id)
-            if not r:
-                return
-            for guild_metric in r:
-                weight_m = weight_multiplier(guild_metric["member_count"])
-                guild_metric["senither_weight"] = round(guild_metric["senither_weight"] * weight_m, 2)
-                if guild_metric["lily_weight"] is None:
-                    del guild_metric["lily_weight"]
-                else:
-                    guild_metric["lily_weight"] = round(guild_metric["lily_weight"] * weight_m, 2)
-            self.guild_metrics[guild_id] = {
-                "d": r,
-                "get_time": Time().time,
-            }
-        return self.guild_metrics[guild_id]["d"]
 
     async def get_player(self, uuid_or_name):
         player_data = self.player_data.get(uuid_or_name.lower(), {})
@@ -186,10 +164,6 @@ class DatabaseCache:
                 if Time().time - value.get("get_time", 0) > 60:
                     del self.player_data[key]
 
-            for key, value in self.guild_metrics.copy().items():
-                if Time().time - value.get("get_time", 0) > 60:
-                    del self.guild_metrics[key]
-
 
 class App(FastAPI):
     def __init__(self, *args, **kwargs):
@@ -230,6 +204,11 @@ app.add_middleware(
 )
 
 
+@app.get("/stats")
+async def stats():
+    return await app.cache.jget("stats")
+
+
 @app.get("/leaderboard")
 async def leaderboard():
     return await app.cache.jget("guilds")
@@ -250,33 +229,14 @@ async def playerleaderboard(
     }
 
 
-@app.get("/stats")
-async def stats():
-    return await app.cache.jget("stats")
-
-
-
 @app.get("/guild/{guild_id}")
 async def guild(guild_id: str):
-    r = await app.database_cache.get_guild(guild_id)
-    try:
-        r2 = r.copy()
-        del r2["get_time"]
-    except:
-        r2 = r
-    return r2
-
-
-@app.get("/metrics/{guild_id}")
-async def metrics(guild_id: str):
-    app.logger.error('Deprecated endpoint used: /metrics/<guild_id>')
-    return await guild_metrics(guild_id)
+    return await app.cache.jget(f"guild_{guild_id}")  # could also be name
 
 
 @app.get("/metrics/guild/{guild_id}")
 async def guild_metrics(guild_id: str):
-    r = await app.database_cache.get_guild_metrics(guild_id)
-    return r if r else []
+    return await app.cache.jget(f"guild_{guild_id}_metrics")  # could also be name
 
 
 @app.get("/metrics/player/{uuid}")
@@ -317,7 +277,7 @@ def fix_history_order(history: list) -> list:
     return list(reversed(new_history))
 
 
-@app.get("/v2/history")
+@app.get("/history")
 async def history_v2(guild_id: str = None, uuid: str = None, per_page: int = 10, page: int = 1):
     if page < 1:
         page = 1
@@ -326,7 +286,7 @@ async def history_v2(guild_id: str = None, uuid: str = None, per_page: int = 10,
     if not uuid and not guild_id:
         return None
 
-    r, total_rows = await app.db.get_history_v2(guild_id, uuid, per_page, page, return_total=True)
+    r, total_rows = await app.db.get_history(guild_id, uuid, per_page, page, return_total=True)
 
     return {
         "data": fix_history_order(r) if uuid else r,
@@ -346,43 +306,12 @@ async def player(uuidorname: str):
 
 @app.get("/autocomplete")
 async def autocomplete():
-    r = await app.db.get_id_name_autocomplete()
-    return r
+    return await app.cache.jget("autocomplete")
 
 
 @app.get("/sitemapurls")
 async def sitemapurls():
-    urls = {
-        "guilds": [],
-        "players": []
-    }
-    async with app.db.pool.acquire() as conn:
-        r = await conn.fetch("""
-SELECT
-    DISTINCT ON (guild_id)
-    guild_name AS name
-FROM
-    guilds
-WHERE
-    capture_date > NOW() - INTERVAL '25 hours'
-ORDER BY
-    guild_id
-        """)
-        for i in r:
-            urls["guilds"].append(i["name"])
-
-        r = await conn.fetch("""
-SELECT
-    name
-FROM
-    players
-WHERE
-    capture_date > NOW() - INTERVAL '25 hours'
-        """)
-        for i in r:
-            urls["players"].append(i["name"])
-
-    return urls
+    return await app.db.get_sitemap_links()
 
 
 @app.on_event('startup')
@@ -395,7 +324,6 @@ async def start_up():
     if not app.cache:
         app.cache = Cache(app)
         app.loop.create_task(app.cache.update_cache())
-
 
     if not app.session:
         app.session = aiohttp.ClientSession(loop=app.loop)

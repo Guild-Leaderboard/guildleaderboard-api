@@ -11,11 +11,6 @@ def weight_multiplier(members):
 
 
 """
-guild_information {
-    "_id": str, # guild id index
-    "discord: str
-}
-
 history {
     _id str, index
     
@@ -30,7 +25,8 @@ history {
 guilds {
     _id str, # guild id index
     guild_name str,
-    position_change int,   
+    position_change int,
+    discord str,   
      
     metrics: [ # latest metrics first
         {
@@ -73,25 +69,15 @@ class Database2:
         self.db = self.client.guildleaderboard
         self.app = app
 
-        self.guild_information = self.db.guild_information
-        self.guild_information.create_index([("_id", 1)])
-
         self.history = self.db.history
         self.history.create_index([("_id", 1)])
 
         self.guilds = self.db.guilds
         self.guilds.create_index([("_id", 1)])
 
-    def get_guild_discord(self, guild_id: str):
-        r = self.guild_information.find_one({"_id": guild_id})
-        return r["discord"] if r else None
-
-    def upsert_guild_info(self, guild_id: str, discord_invite: str):
-        self.guild_information.update_one(
-            {"_id": guild_id},
-            {"$set": {"discord": discord_invite}},
-            upsert=True
-        )
+    """
+    History
+    """
 
     def get_history(self, guild_id=None, player=None, per_page=10, page=1, return_total=False):
         # remove _id from query and remove
@@ -171,6 +157,20 @@ class Database2:
         ])
         return list(r)[0] if r else None
 
+    """
+    Other
+    """
+
+    def get_sitemap_links(self):
+        return {
+            "guilds": [
+                row["guild_name"] for row in self.guilds.find({}, {"_id": 0, "guild_name": 1})
+            ],
+            "players": []
+        }
+
+    # Other
+
     def sort_metrics(self):
         """
 Fixes the metrics array in the guilds collection by sorting the array by capture_date if it somehow got unsorted.
@@ -240,7 +240,8 @@ Latest should be first
         # # self.sort_metrics()
         # import time
         t = time.time()
-        e = self.get_guild_player_from_guilds("4316ec4fd9ea465f84a30ad6be769ecd")
+        # e = self.get_guild_player_from_guilds("4316ec4fd9ea465f84a30ad6be769ecd")
+        e = self.get_id_name_autocomplete()
         print(time.time() - t)
         print(e)
 
@@ -255,7 +256,7 @@ Latest should be first
 # for guild in guilds_table:
 #     guilds[guild["guild_id"]] = guilds.get(guild["guild_id"], {
 #         "_id": guild["guild_id"], "guild_name": guild["guild_name"],
-#         "position_change": guild["position_change"], "metrics": [], "positions": "0,0,0,0,0,0,0"
+#         "position_change": guild["position_change"], "metrics": [], "positions": "0,0,0,0,0,0,0", "discord": ""
 #     })
 #     multiplier = weight_multiplier(len(guild["players"]))
 #     guilds[guild["guild_id"]]["metrics"].append({
