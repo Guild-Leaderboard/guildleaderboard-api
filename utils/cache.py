@@ -22,10 +22,11 @@ class Cache:
             "stats": [3600, 0],
             "guild": [240, 0],
             "autocomplete": [600, 0],
+            "sitemap": [3600, 0],
         }
 
     async def jget(self, key):
-        return json.loads(await self.rd.get(key))
+        return json.loads(await self.rd.get(key) or "null")
 
     async def update_cache(self):
         while True:
@@ -64,6 +65,12 @@ class Cache:
             if time.time() - self.update_times["autocomplete"][1] >= self.update_times["autocomplete"][0]:
                 await self.rd.set("autocomplete", json.dumps(self.db.get_id_name_autocomplete()))
                 self.update_times["autocomplete"][1] = time.time()
+
+            if time.time() - self.update_times["sitemap"][1] >= self.update_times["sitemap"][0]:
+                await self.rd.set("sitemap", json.dumps(self.db.get_sitemap_links()))
+                self.update_times["sitemap"][1] = time.time()
+
+            self.app.logger.info("Updated cache")
 
             await asyncio.sleep(5)
 

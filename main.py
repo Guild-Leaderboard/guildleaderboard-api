@@ -1,8 +1,8 @@
 import asyncio
-import datetime
 import logging
 import os
 import re
+import time
 from logging.config import dictConfig
 from math import sin, ceil
 
@@ -24,147 +24,6 @@ def weight_multiplier(members):
     return members / 125 + (1 - members / 125) * frequency
 
 
-class Time:
-    def __init__(self):
-        self.datetime: datetime.datetime = self.utcnow()
-        self.time: int = self.datetime.timestamp()
-
-    def __repr__(self):
-        return f"<Time {self.time}>"
-
-    @staticmethod
-    def utcnow() -> datetime.datetime:
-        """A helper function to return an aware UTC datetime representing the current time.
-
-        This should be preferred to :meth:`datetime.datetime.utcnow` since it is an aware
-        datetime, compared to the naive datetime in the standard library.
-
-        .. versionadded:: 2.0
-
-        Returns
-        --------
-        :class:`datetime.datetime`
-            The current aware datetime in UTC.
-        """
-        return datetime.datetime.utcnow().replace(tzinfo=None)
-        # return datetime.datetime.now(tz=pytz.utc).replace(tzinfo=None)
-        # return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-        # return datetime.datetime.now().replace(tzinfo=None)
-
-
-class DatabaseCache:
-    def __init__(self, app):
-        self.app: App = app
-        self.guilds = {}
-        self.guild_metrics = {}
-        self.player_data = {}
-        self.player_metrics = {}
-
-    async def get_guild(self, guild_id_or_name):
-        guild = self.guilds.get(guild_id_or_name, {})
-        if Time().time - guild.get("get_time", 0) > 60:
-            # [a-z-0-9]{24}
-            async with app.db.pool.acquire() as conn:
-                if re.match(r"[a-z-0-9]{24}", guild_id_or_name):
-                    guild = await self.app.db.get_guild(guild_id=guild_id_or_name, conn=conn)
-                    if not guild:
-                        guild = await self.app.db.get_guild(guild_name=guild_id_or_name, conn=conn)
-                else:
-                    guild = await self.app.db.get_guild(guild_name=guild_id_or_name, conn=conn)
-                    if not guild:
-                        guild = await self.app.db.get_guild(guild_id=guild_id_or_name, conn=conn)
-                if not guild:
-                    return
-
-                guild["members"] = await app.db.get_players(guild["members"], conn)
-
-                self.guilds[guild["id"]] = guild
-                self.guilds[guild["id"]]["get_time"] = Time().time
-
-                self.guilds[guild["name"]] = guild
-                self.guilds[guild["name"]]["get_time"] = Time().time
-                for player in guild["members"]:
-                    for key, value in player.items():
-                        if isinstance(value, datetime.timedelta):
-                            player[key] = str(value)
-        return guild
-
-    async def get_player(self, uuid_or_name):
-        player_data = self.player_data.get(uuid_or_name.lower(), {})
-
-        if not player_data or Time().time - player_data.get("get_time", 0) > 60:
-            async with app.db.pool.acquire() as conn:
-                if re.match(r"[0-9a-f]{32}", uuid_or_name):
-                    r = await self.app.db.get_player(uuid=uuid_or_name, conn=conn)
-                    if not r:
-                        r = await self.app.db.get_player(name=uuid_or_name, conn=conn)
-                else:
-                    r = await self.app.db.get_player(name=uuid_or_name, conn=conn)
-                    if not r:
-                        r = await self.app.db.get_player(uuid=uuid_or_name, conn=conn)
-                if not r:
-                    return
-
-                # r1 = await self.app.db.get_guild_player_from_history(r["uuid"], conn=conn)
-                # guild_name = r1["guild_name"] if r1 and r1["type"] == "1" else None
-                #
-                # if not r1:
-                r2 = await self.app.db.get_guild_player_from_guilds(r["uuid"], conn=conn)
-                if not r2:
-                    r["guild_name"] = None
-                else:
-                    time_difference: datetime.datetime = r2["capture_date"]
-
-                    r["guild_name"] = r2["guild_name"] if r2 else None
-                    if (Time().datetime - time_difference).total_seconds() >= 25 * 3600:
-                        r["guild_name"] = None
-
-                player_data = {
-                    "d": r,
-                    "get_time": Time().time,
-                }
-
-                self.player_data[r["uuid"]] = player_data
-                self.player_data[r["name"].lower()] = player_data
-
-        return self.player_data[uuid_or_name.lower()]["d"]
-
-    async def get_player_metrics(self, uuid_or_name):
-        player_metrics = self.player_metrics.get(uuid_or_name, {})
-
-        if not player_metrics or Time().time - player_metrics.get("get_time", 0) > 60:
-            async with app.db.pool.acquire() as conn:
-                if re.match(r"[0-9a-f]{32}", uuid_or_name):
-                    r = await self.app.db.get_player_metrics(uuid=uuid_or_name, conn=conn)
-                    if not r:
-                        r = await self.app.db.get_player_metrics(name=uuid_or_name, conn=conn)
-                else:
-                    r = await self.app.db.get_player_metrics(name=uuid_or_name, conn=conn)
-                    if not r:
-                        r = await self.app.db.get_player_metrics(uuid=uuid_or_name, conn=conn)
-            if not r:
-                return None
-            dic1 = {
-                "d": r,
-                "get_time": Time().time,
-            }
-
-            self.player_metrics[r[0]['name'].lower()] = dic1
-            self.player_metrics[r[0]['uuid']] = dic1
-        return self.player_metrics[uuid_or_name.lower()]["d"]
-
-    async def clean_db(self):
-        while True:
-            await asyncio.sleep(30)
-            for key, value in self.guilds.copy().items():
-                if Time().time - value.get("get_time", 0) > 60:
-                    del self.guilds[key]
-
-            for key, value in self.player_data.copy().items():
-                if Time().time - value.get("get_time", 0) > 60:
-                    del self.player_data[key]
-
-
 class App(FastAPI):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -172,8 +31,6 @@ class App(FastAPI):
         self.cache: Cache = None
         self.loop: asyncio.BaseEventLoop = None
         self.session: aiohttp.ClientSession = None
-
-        self.database_cache: DatabaseCache = DatabaseCache(self)
 
         self.logger = logging.getLogger("mycoolapp")
         self.patrons = None
@@ -218,7 +75,7 @@ async def leaderboard():
 async def playerleaderboard(
         sort_by: str = 'senither_weight', page: int = 1, reverse: bool = False, username: str = None
 ):
-    r, total_rows = await app.db.get_player_page(sort_by, reverse, page, username=username, return_total=True)
+    r, total_rows = app.db.get_player_page(sort_by, reverse, page, username=username)
     return {
         "data": r,
         "paginate": {
@@ -229,20 +86,31 @@ async def playerleaderboard(
     }
 
 
-@app.get("/guild/{guild_id}")
-async def guild(guild_id: str):
-    return await app.cache.jget(f"guild_{guild_id}")  # could also be name
+async def determine_guild_input(guild_input: str) -> str:
+    # check if guild_input is a id
+    if re.match(r"[a-z-0-9]{24}", guild_input):
+        return guild_input
+    # check if guild_input is in the autocomplete list
+    guild_name_id_list = await app.cache.jget("autocomplete")
+    for i in guild_name_id_list:
+        if i["name"].lower() == guild_input.lower():
+            return i["id"]
+
+
+@app.get("/guild/{guild_input}")
+async def guild(guild_input: str):
+    guild_id = await determine_guild_input(guild_input)
+    return await app.cache.jget(f"guild_{guild_id}")
 
 
 @app.get("/metrics/guild/{guild_id}")
 async def guild_metrics(guild_id: str):
-    return await app.cache.jget(f"guild_{guild_id}_metrics")  # could also be name
+    return await app.cache.jget(f"guild_{guild_id}_metrics")
 
 
 @app.get("/metrics/player/{uuid}")
 async def player_metrics(uuid):
-    r = await app.database_cache.get_player_metrics(uuid)
-    return r
+    return app.db.get_player_metrics(uuid)
 
 
 def fix_history_order(history: list) -> list:
@@ -286,7 +154,7 @@ async def history_v2(guild_id: str = None, uuid: str = None, per_page: int = 10,
     if not uuid and not guild_id:
         return None
 
-    r, total_rows = await app.db.get_history(guild_id, uuid, per_page, page, return_total=True)
+    r, total_rows = await app.db.get_history(guild_id, uuid, per_page, page)
 
     return {
         "data": fix_history_order(r) if uuid else r,
@@ -298,10 +166,17 @@ async def history_v2(guild_id: str = None, uuid: str = None, per_page: int = 10,
     }
 
 
-@app.get("/player/{uuidorname}")
-async def player(uuidorname: str):
-    r = await app.database_cache.get_player(uuidorname)
-    return r
+def determine_player_input(player_input: str) -> str:
+    if re.match(r"[0-9a-f]{32}", player_input):
+        return 'uuid'
+    return 'name'
+
+
+@app.get("/player/{player_input}")
+async def player(player_input: str):
+    return app.db.get_player(**{
+        determine_player_input(player_input): player_input
+    })
 
 
 @app.get("/autocomplete")
@@ -311,7 +186,7 @@ async def autocomplete():
 
 @app.get("/sitemapurls")
 async def sitemapurls():
-    return await app.db.get_sitemap_links()
+    return await app.cache.jget("sitemap")
 
 
 @app.on_event('startup')
@@ -328,7 +203,7 @@ async def start_up():
     if not app.session:
         app.session = aiohttp.ClientSession(loop=app.loop)
         app.patrons = await app.get_patreon_members()
-        app.patreon_last_get = Time().time
+        app.patreon_last_get = time.time()
 
 
 if __name__ == "__main__":
