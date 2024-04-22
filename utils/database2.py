@@ -92,6 +92,7 @@ players {
                         wolf_xp BIGINT,
                         enderman_xp BIGINT,
                         blaze_xp BIGINT,
+                        vampire_xp BIGINT,
                     }
             dungeon_stats str # comma separated list of stats
                     {
@@ -433,8 +434,8 @@ Latest should be first
 #     try:
 #         players[player["uuid"]]["metrics"].append({
 #             "capture_date": player["capture_date"],
-#             "general_stats": f"{round(player['senither_weight'])},{round(player['lily_weight'])},{round(player['networth'])},{round(player['sb_experience'], 1)}",
-#             "slayer_stats": f"{total_slayer},{round(player['zombie_xp'])},{round(player['spider_xp'])},{round(player['wolf_xp'])},{round(player['enderman_xp'])},{round(player['blaze_xp'])}",
+#             "general_stats": f"{round(player['senither_weight'])},{round(player['lily_weight'])},{round(player['networth'])},{round(player['sb_experience'])}",
+#             "slayer_stats": f"{total_slayer},{round(player['zombie_xp'])},{round(player['spider_xp'])},{round(player['wolf_xp'])},{round(player['enderman_xp'])},{round(player['blaze_xp'])},{round(player.get('vampire_xp', 0))}",
 #             "dungeon_stats": f"{round(player['catacombs_xp'])},{round(player['healer_xp'])},{round(player['mage_xp'])},{round(player['berserk_xp'])},{round(player['archer_xp'])},{round(player['tank_xp'])}",
 #             "skill_stats": f"{round(player['average_skill'], 2)},{round(player['taming_xp'])},{round(player['mining_xp'])},{round(player['farming_xp'])},{round(player['combat_xp'])},{round(player['foraging_xp'])},{round(player['fishing_xp'])},{round(player['enchanting_xp'])},{round(player['alchemy_xp'])},{round(player['carpentry_xp'])}"
 #         })
@@ -480,7 +481,7 @@ Latest should be first
 #         "capture_date": guild["capture_date"],
 #         "players": guild["players"],
 #         "multiplier": round(multiplier, 2),
-#         "weighted_stats": f"{round(guild['senither_weight'] * multiplier)},{round(guild['skills'], 2)},{round(guild['catacombs'], 2)},{round(guild['slayer'])},{round(guild['lily_weight'] * multiplier)},{round(guild['networth'])},{round(guild['sb_experience'] * multiplier, 1)}"
+#         "weighted_stats": f"{round(guild['senither_weight'] * multiplier)},{round(guild['skills'], 2)},{round(guild['catacombs'], 2)},{round(guild['slayer'])},{round(guild['lily_weight'] * multiplier)},{round(guild['networth'])},{round(guild['sb_experience'] * multiplier)}"
 #     })
 
 ## History Import
