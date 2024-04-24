@@ -31,8 +31,9 @@ class Cache:
     async def update_cache(self):
         while True:
             if time.time() - self.update_times["guilds"][1] >= self.update_times["guilds"][0]:
-                await self.rd.set("guilds", json.dumps(self.db.get_guilds()))
+                await self.rd.set("guilds", json.dumps(self.db.get_guilds(), default=str))
                 self.update_times["guilds"][1] = time.time()
+                self.app.logger.info("Updated guilds cache")
 
             if time.time() - self.update_times["stats"][1] >= self.update_times["stats"][0]:
                 r = await self.jget("guilds")
@@ -45,14 +46,15 @@ class Cache:
                     "players_tracked": sum([i["members"] for i in r]),
                     "patrons": self.app.patrons,
                     "top_guilds": sorted(r, key=lambda x: x["weighted_stats"].split(",")[6], reverse=True)[:3],
-                }))
+                }, default=str))
                 self.update_times["stats"][1] = time.time()
+                self.app.logger.info("Updated stats cache")
 
             if time.time() - self.update_times["guild"][1] >= self.update_times["guild"][0]:
                 guild_id_list = []
                 for guild in await self.jget("guilds"):
-                    await self.rd.set(f'guild_{guild["_id"]}', json.dumps(self.db.get_guild(guild["_id"])))
-                    await self.rd.set(f'guild_{guild["_id"]}_metrics', json.dumps(self.db.get_guild_metrics(guild["_id"])))
+                    await self.rd.set(f'guild_{guild["_id"]}', json.dumps(self.db.get_guild(guild["_id"]), default=str))
+                    await self.rd.set(f'guild_{guild["_id"]}_metrics', json.dumps(self.db.get_guild_metrics(guild["_id"]), default=str))
                     guild_id_list.append(guild["_id"])
 
                 # delete guilds that are no longer in the database
@@ -61,16 +63,17 @@ class Cache:
                     if key.split("_")[1] not in guild_id_list:
                         await self.rd.delete(key)
                 self.update_times["guild"][1] = time.time()
+                self.app.logger.info("Updated guild cache")
 
             if time.time() - self.update_times["autocomplete"][1] >= self.update_times["autocomplete"][0]:
-                await self.rd.set("autocomplete", json.dumps(self.db.get_id_name_autocomplete()))
+                await self.rd.set("autocomplete", json.dumps(self.db.get_id_name_autocomplete(), default=str))
                 self.update_times["autocomplete"][1] = time.time()
+                self.app.logger.info("Updated autocomplete cache")
 
             if time.time() - self.update_times["sitemap"][1] >= self.update_times["sitemap"][0]:
-                await self.rd.set("sitemap", json.dumps(self.db.get_sitemap_links()))
+                await self.rd.set("sitemap", json.dumps(self.db.get_sitemap_links(), default=str))
                 self.update_times["sitemap"][1] = time.time()
-
-            self.app.logger.info("Updated cache")
+                self.app.logger.info("Updated sitemap cache")
 
             await asyncio.sleep(5)
 

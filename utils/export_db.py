@@ -2,19 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-from typing import TYPE_CHECKING
 
 import asyncpg
-from dotenv import load_dotenv
 
-if TYPE_CHECKING:
-    pass
-
-load_dotenv()
-DB_IP = os.getenv("DB_IP")
-DB_USER = os.getenv("DB_USER")
-DB_PWD = os.getenv("DB_PWD")
+DB_IP = "75.119.153.245"
+DB_USER = "postgres"
+DB_PWD = "0uUrWeWM96u17zUvO"
 
 
 class Database:
@@ -56,26 +49,20 @@ class Database:
         #
         #     json.dump(table, f)
 
-        # with open("guilds_table.json", "w") as f:
-        #     table = await Database.pool.fetch("SELECT * FROM guilds;", timeout=60)
-        #     table = [self.format_json(row) for row in table]
+        with open("guilds_table.json", "w") as f:
+            table = await Database.pool.fetch("SELECT * FROM guilds;", timeout=60)
+            table = [self.format_json(row) for row in table]
+
+            json.dump(table, f)
+
+        # for i in range(0, 10):
+        #     with open(f"player_metrics_{i}.json", "w") as f:
+        #         # player_metrics doesn't have a id column so we can't use the modulo operator its around 1.5m rows
+        #         table = await Database.pool.fetch(f"SELECT * FROM player_metrics LIMIT 150000 OFFSET {i * 150000};", timeout=60)
         #
-        #     json.dump(table, f)
-
-        # with open("player_metrics.json", "w") as f:
-        #     table = await Database.pool.fetch("SELECT * FROM player_metrics;", timeout=60)
-        #     table = [self.format_json(row) for row in table]
         #
-        #     json.dump(table, f)
-        # do the thing above but spread it into mul tiple files
-        for i in range(0, 10):
-            with open(f"player_metrics_{i}.json", "w") as f:
-                # player_metrics doesn't have a id column so we can't use the modulo operator its around 1.5m rows
-                table = await Database.pool.fetch(f"SELECT * FROM player_metrics LIMIT 150000 OFFSET {i * 150000};", timeout=60)
-
-
-                table = [self.format_json(row) for row in table]
-                json.dump(table, f)
+        #         table = [self.format_json(row) for row in table]
+        #         json.dump(table, f)
 
         return self
 

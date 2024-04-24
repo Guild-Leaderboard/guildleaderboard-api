@@ -34,26 +34,26 @@ guilds {
             multiplier REAL,            
             weighted_stats str # comma separated list of stats
                     {
-                        catacombs float,
-                        skills float,
-                        slayer int,
                         senither_weight int,
+                        skills float,                    
+                        catacombs float,
+                        slayer int,
                         lily_weight int,
                         networth int,
-                        sb_experience int 
+                        sb_experience int
                     }
         },
         ...
     ],
     positions str # comma separated list of positions 
                 {
-                    catacombs float,
-                    skills float,
-                    slayer int,
                     senither_weight int,
+                    skills float,                    
+                    catacombs float,
+                    slayer int,
                     lily_weight int,
                     networth int,
-                    sb_experience int    
+                    sb_experience int  
                 }    
 }
 guilds.players is an aray of uuids
@@ -193,6 +193,7 @@ class Database2:
             }},
         ])
         return list(r)
+
 
     def get_guild(self, guild_id=None, guild_name=None):
         query = {}
@@ -405,17 +406,33 @@ Latest should be first
             )
 
     def main(self):
+        pass
         # self.sort_player_metrics()
-        # # self.sort_guild_metrics()
-        import time
-        t = time.time()
+        # self.sort_guild_metrics()
 
-        # e = self.get_guild_player_from_guilds("4316ec4fd9ea465f84a30ad6be769ecd")
-        # e = self.get_guild("6125d9f28ea8c92e1833e8f0")
-        # e = self.get_player_page("latest_asl", username='t')
-        e = self.get_history(guild_id="6125d9f28ea8c92e1833e8f0")
-        print(time.time() - t)
-        print(e)
+# # Guild import
+# import json
+# import datetime
+# self.guilds.delete_many({})
+#
+# with open("guilds_table.json", "r") as f:
+#     guilds_table = json.load(f)
+#
+# guilds = {}
+# for guild in guilds_table:
+#     guilds[guild["guild_id"]] = guilds.get(guild["guild_id"], {
+#         "_id": guild["guild_id"], "guild_name": guild["guild_name"],
+#         "position_change": guild["position_change"], "metrics": [], "positions": "0,0,0,0,0,0,0", "discord": ""
+#     })
+#     multiplier = weight_multiplier(len(guild["players"]))
+#     guilds[guild["guild_id"]]["metrics"].append({
+#         "capture_date": datetime.datetime.fromisoformat(guild["capture_date"]),
+#         "players": guild["players"],
+#         "multiplier": round(multiplier, 2),
+#         "weighted_stats": f"{round(guild['senither_weight'] * multiplier)},{round(guild['skills'], 2)},{round(guild['catacombs'], 2)},{round(guild['slayer'])},{round(guild['lily_weight'] * multiplier)},{round(guild['networth'])},{round(guild['sb_experience'] * multiplier)}"
+#     })
+#
+# self.guilds.insert_many(list(guilds.values()))
 
 
 # # Player import
@@ -464,25 +481,6 @@ Latest should be first
 # players_table = list(players.values())
 # self.players.insert_many(players_table)
 
-## Guild import
-# self.guilds.delete_many({})
-#
-# with open("guilds_table.json", "r") as f:
-#     guilds_table = json.load(f)
-#
-# guilds = {}
-# for guild in guilds_table:
-#     guilds[guild["guild_id"]] = guilds.get(guild["guild_id"], {
-#         "_id": guild["guild_id"], "guild_name": guild["guild_name"],
-#         "position_change": guild["position_change"], "metrics": [], "positions": "0,0,0,0,0,0,0", "discord": ""
-#     })
-#     multiplier = weight_multiplier(len(guild["players"]))
-#     guilds[guild["guild_id"]]["metrics"].append({
-#         "capture_date": guild["capture_date"],
-#         "players": guild["players"],
-#         "multiplier": round(multiplier, 2),
-#         "weighted_stats": f"{round(guild['senither_weight'] * multiplier)},{round(guild['skills'], 2)},{round(guild['catacombs'], 2)},{round(guild['slayer'])},{round(guild['lily_weight'] * multiplier)},{round(guild['networth'])},{round(guild['sb_experience'] * multiplier)}"
-#     })
 
 ## History Import
 # guilds_table = list(guilds.values())

@@ -15,7 +15,6 @@ from custom_logger import LogConfig
 from utils.cache import Cache
 from utils.database2 import Database2
 
-load_dotenv(".env")
 dictConfig(LogConfig().dict())
 
 
