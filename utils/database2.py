@@ -134,7 +134,6 @@ class Database2:
         self.history.create_index([("uuid", 1)])
         self.history.create_index([("guild_id", 1)])
 
-
         self.guilds = self.db.guilds
         self.guilds.create_index([("_id", 1)])
 
@@ -169,10 +168,13 @@ class Database2:
 
         return list(r), self.history.count_documents(query)
 
-
     def get_id_name_autocomplete(self):
         r = self.guilds.find({}, {"_id": 1, "guild_name": 1})
         return [{"id": row["_id"], "name": row["guild_name"]} for row in r]
+
+    def get_uuid_from_name(self, name):
+        r = self.players.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}}, {"_id": 1})
+        return r["_id"] if r else None
 
     """
     Guilds
@@ -194,7 +196,6 @@ class Database2:
         ])
         return list(r)
 
-
     def get_guild(self, guild_id=None, guild_name=None):
         query = {}
         if guild_id:
@@ -211,7 +212,11 @@ class Database2:
         query = {
             "_id": {"$in": r["metrics"][0]["players"]}
         }
-        r["metrics"][0]["players"] = list(self.players.find(query, {"name": 1, "_id": 1, "metrics": {"$slice": 1}}))
+        # r["metrics"][0]["players"] = list(self.players.find(query, {"name": 1, "_id": 1, "metrics": {"$slice": 1}}))
+        r["metrics"][0]["players"] = list(self.players.find(query, {
+            "name": 1, "_id": 1, "latest_senither": 1, "latest_nw": 1, "latest_sb_xp": 1,
+            "latest_slayer": 1, "latest_cata": 1, "latest_asl": 1, "latest_capture_date": 1
+        }))
         return r
 
     def get_guild_metrics(self, guild_id):
@@ -280,7 +285,7 @@ class Database2:
         return r
 
     def get_player_metrics(self, uuid):
-        return self.players.find_one({"_id": uuid}, {"metrics": 1})
+        return self.players.find_one({"_id": uuid}, {"metrics": 1, "_id": 0})["metrics"]
 
     def get_player_page(self, sort_by: str, reverse: bool = False, page=1, username: str = None):
         if sort_by not in [
@@ -304,6 +309,7 @@ class Database2:
             "latest_asl": 1,
             "latest_slayer": 1,
             "latest_cata": 1,
+            "latest_capture_date": 1
         }).sort([(sort_by, 1 if reverse else -1)]).skip(offset).limit(25)), total
 
     """
@@ -406,9 +412,13 @@ Latest should be first
             )
 
     def main(self):
+        # import time
+        #
+        # t = time.time()
+        # r = self.get_uuid_from_name("timnoot")
+        # print(time.time() - t)
+        # print(r)
         pass
-        # self.sort_player_metrics()
-        # self.sort_guild_metrics()
 
 # # Guild import
 # import json
@@ -433,10 +443,15 @@ Latest should be first
 #     })
 #
 # self.guilds.insert_many(list(guilds.values()))
-
-
+# self.sort_guild_metrics()
+# print("Done")
+#
 # # Player import
+# import datetime
 # import json
+#
+# self.players.delete_many({})
+#
 # player_metrics = []
 # for i in range(0, 10):
 #     with open(f"player_metrics_{i}.json", "r") as f:
@@ -447,10 +462,12 @@ Latest should be first
 #     players[player["uuid"]] = players.get(player["uuid"], {
 #         "_id": player["uuid"], "name": player["name"], "metrics": []
 #     })
-#     total_slayer = round(player["zombie_xp"] + player["spider_xp"] + player["wolf_xp"] + player["enderman_xp"] + player["blaze_xp"])
+#     total_slayer = round(
+#         player["zombie_xp"] + player["spider_xp"] + player["wolf_xp"] + player["enderman_xp"] + player[
+#             "blaze_xp"])
 #     try:
 #         players[player["uuid"]]["metrics"].append({
-#             "capture_date": player["capture_date"],
+#             "capture_date": datetime.datetime.fromisoformat(player["capture_date"]),
 #             "general_stats": f"{round(player['senither_weight'])},{round(player['lily_weight'])},{round(player['networth'])},{round(player['sb_experience'])}",
 #             "slayer_stats": f"{total_slayer},{round(player['zombie_xp'])},{round(player['spider_xp'])},{round(player['wolf_xp'])},{round(player['enderman_xp'])},{round(player['blaze_xp'])},{round(player.get('vampire_xp', 0))}",
 #             "dungeon_stats": f"{round(player['catacombs_xp'])},{round(player['healer_xp'])},{round(player['mage_xp'])},{round(player['berserk_xp'])},{round(player['archer_xp'])},{round(player['tank_xp'])}",
@@ -475,21 +492,22 @@ Latest should be first
 #     player["latest_asl"] = round(float(player["metrics"][0]["skill_stats"].split(",")[0]), 2)
 #     player["latest_capture_date"] = player["metrics"][0]["capture_date"]
 #
-#
-#
 # print("Inserting")
 # players_table = list(players.values())
 # self.players.insert_many(players_table)
-
-
-## History Import
-# guilds_table = list(guilds.values())
-# self.guilds.insert_many(guilds_table)
-
-
+# self.sort_player_metrics()
+#
+#
+# # History Import
+# import json
+#
+# self.history.delete_many({})
 # with open("history_table.json", "r") as f:
 #     history_table = json.load(f)
 #     self.history.insert_many(history_table)
+#
+# print("Done")
+
 
 if __name__ == "__main__":
     db = Database2()

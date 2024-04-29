@@ -45,7 +45,7 @@ class Cache:
                     "guilds_tracked": len(r),
                     "players_tracked": sum([i["members"] for i in r]),
                     "patrons": self.app.patrons,
-                    "top_guilds": sorted(r, key=lambda x: x["weighted_stats"].split(",")[6], reverse=True)[:3],
+                    "top_guilds": sorted(r, key=lambda x: float(x["weighted_stats"].split(",")[6]), reverse=True)[:3],
                 }, default=str))
                 self.update_times["stats"][1] = time.time()
                 self.app.logger.info("Updated stats cache")

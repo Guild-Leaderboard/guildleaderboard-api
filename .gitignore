@@ -140,3 +140,5 @@ test.py
 /utils/player_metrics_7.json
 /utils/player_metrics_8.json
 /utils/player_metrics_9.json
+utils/guilds_table.json
+utils/history_table.json

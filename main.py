@@ -106,9 +106,17 @@ async def guild(guild_input: str):
 async def guild_metrics(guild_id: str):
     return await app.cache.jget(f"guild_{guild_id}_metrics")
 
+def determine_player_input(player_input: str) -> str:
+    if re.match(r"[0-9a-f]{32}", player_input):
+        return 'uuid'
+    return 'name'
 
 @app.get("/metrics/player/{uuid}")
 async def player_metrics(uuid):
+    if determine_player_input(uuid) == 'name':
+        uuid = app.db.get_uuid_from_name(uuid)
+    if not uuid:
+        return None
     return app.db.get_player_metrics(uuid)
 
 
@@ -153,7 +161,7 @@ async def history_v2(guild_id: str = None, uuid: str = None, per_page: int = 10,
     if not uuid and not guild_id:
         return None
 
-    r, total_rows = await app.db.get_history(guild_id, uuid, per_page, page)
+    r, total_rows = app.db.get_history(guild_id, uuid, per_page, page)
 
     return {
         "data": fix_history_order(r) if uuid else r,
