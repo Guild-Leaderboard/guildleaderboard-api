@@ -66,90 +66,48 @@ class Database:
         import time
 
         Database.pool = await self.get_pool()
+        # migrate discord column to guilds table
+        r = await Database.pool.fetch("SELECT * FROM guild_information;")
+
+        for row in r:
+            self.guilds.update_one(
+                {"_id": row["guild_id"]},
+                {"$set": {"discord": row["discord"]}}
+            )
+            print(row["guild_id"])
+
+
+
+
+
         # Get a list of all the player uuids
         # players = await Database.pool.fetch("SELECT uuid FROM players;", timeout=60)
         # Select only unique uuids from the player_metrics table
-        self.players.delete_many({})
-        players = await Database.pool.fetch("SELECT DISTINCT uuid FROM player_metrics;", timeout=60)
-
-        remaining_players = [row['uuid'] for row in players]
-        count = 0
-        saved_players = []
-        t = time.time()
-        # loop through remaining players in chunks of 100
-        for i in range(0, len(remaining_players), 100):
-            uuids = remaining_players[i:i + 100]
-            players_data = {}
-            # Get the latest record for each player
-            records = await Database.pool.fetch(
-                "SELECT * FROM player_metrics WHERE uuid = ANY($1) ORDER BY capture_date DESC;", uuids, timeout=60)
-
-            for metric in records:
-                if metric["uuid"] not in players_data:
-                    players_data[metric["uuid"]] = {
-                        "_id": metric["uuid"], "name": metric["name"], "metrics": []
-                    }
-                total_slayer = round(
-                    metric["zombie_xp"] + metric["spider_xp"] + metric["wolf_xp"] + metric["enderman_xp"]
-                    + metric["blaze_xp"]
-                )
-                players_data[metric["uuid"]]["metrics"].append({
-                    "capture_date": metric["capture_date"],
-                    "general_stats": f"{round(metric['senither_weight'])},{round(metric['lily_weight'])},{round(metric['networth'])},{round(metric['sb_experience'])}",
-                    "slayer_stats": f"{total_slayer},{round(metric['zombie_xp'])},{round(metric['spider_xp'])},{round(metric['wolf_xp'])},{round(metric['enderman_xp'])},{round(metric['blaze_xp'])},{round(metric.get('vampire_xp', 0))}",
-                    "dungeon_stats": f"{round(metric['catacombs_xp'])},{round(metric['healer_xp'])},{round(metric['mage_xp'])},{round(metric['berserk_xp'])},{round(metric['archer_xp'])},{round(metric['tank_xp'])}",
-                    "skill_stats": f"{round(metric['average_skill'], 2)},{round(metric['taming_xp'])},{round(metric['mining_xp'])},{round(metric['farming_xp'])},{round(metric['combat_xp'])},{round(metric['foraging_xp'])},{round(metric['fishing_xp'])},{round(metric['enchanting_xp'])},{round(metric['alchemy_xp'])},{round(metric['carpentry_xp'])}"
-                })
-
-
-            for record in players_data.values():
-                sorted_metrics = sorted(record["metrics"], key=itemgetter("capture_date"), reverse=True)
-
-                player_data = {
-                    "_id": record["_id"], "name": record["name"], "metrics": sorted_metrics,
-                    "latest_senither": round(int(sorted_metrics[0]["general_stats"].split(",")[0])),
-                    "latest_lily": round(int(sorted_metrics[0]["general_stats"].split(",")[1])),
-                    "latest_nw": round(int(sorted_metrics[0]["general_stats"].split(",")[2])),
-                    "latest_sb_xp": round(int(sorted_metrics[0]["general_stats"].split(",")[3]), 1),
-                    "latest_slayer": round(int(sorted_metrics[0]["slayer_stats"].split(",")[0])),
-                    "latest_cata": round(int(sorted_metrics[0]["dungeon_stats"].split(",")[0])),
-                    "latest_asl": round(float(sorted_metrics[0]["skill_stats"].split(",")[0]), 2),
-                    "latest_capture_date": sorted_metrics[0]["capture_date"]
-                }
-                saved_players.append(player_data)
-                count += 1
-                print(f"{count}/{len(players)}")
-
-            self.players.insert_many(saved_players)
-            print("Inserted")
-            print(time.time() - t)
-            t = time.time()
-            saved_players = []
-
-        # for uuid in players:
-        #     if len(saved_players) >= 100:
-        #         self.players.insert_many(saved_players)
-        #         print("Inserted")
-        #         print(time.time() - t)
-        #         t = time.time()
+        # self.players.delete_many({})
+        # players = await Database.pool.fetch("SELECT DISTINCT uuid FROM player_metrics;", timeout=60)
         #
-        #         saved_players = []
-        #
+        # remaining_players = [row['uuid'] for row in players]
+        # count = 0
+        # saved_players = []
+        # t = time.time()
+        # # loop through remaining players in chunks of 100
+        # for i in range(0, len(remaining_players), 100):
+        #     uuids = remaining_players[i:i + 100]
+        #     players_data = {}
         #     # Get the latest record for each player
-        #     record = await Database.pool.fetch(
-        #         "SELECT * FROM player_metrics WHERE uuid = $1 ORDER BY capture_date DESC;", uuid, timeout=60)
+        #     records = await Database.pool.fetch(
+        #         "SELECT * FROM player_metrics WHERE uuid = ANY($1) ORDER BY capture_date DESC;", uuids, timeout=60)
         #
-        #     if record is None:
-        #         print(uuid, "was null")
-        #         continue
-        #     new_metrics = []
-        #     for metric in record:
+        #     for metric in records:
+        #         if metric["uuid"] not in players_data:
+        #             players_data[metric["uuid"]] = {
+        #                 "_id": metric["uuid"], "name": metric["name"], "metrics": []
+        #             }
         #         total_slayer = round(
         #             metric["zombie_xp"] + metric["spider_xp"] + metric["wolf_xp"] + metric["enderman_xp"]
         #             + metric["blaze_xp"]
         #         )
-        #         # print(metric["capture_date"])
-        #         new_metrics.append({
+        #         players_data[metric["uuid"]]["metrics"].append({
         #             "capture_date": metric["capture_date"],
         #             "general_stats": f"{round(metric['senither_weight'])},{round(metric['lily_weight'])},{round(metric['networth'])},{round(metric['sb_experience'])}",
         #             "slayer_stats": f"{total_slayer},{round(metric['zombie_xp'])},{round(metric['spider_xp'])},{round(metric['wolf_xp'])},{round(metric['enderman_xp'])},{round(metric['blaze_xp'])},{round(metric.get('vampire_xp', 0))}",
@@ -157,24 +115,31 @@ class Database:
         #             "skill_stats": f"{round(metric['average_skill'], 2)},{round(metric['taming_xp'])},{round(metric['mining_xp'])},{round(metric['farming_xp'])},{round(metric['combat_xp'])},{round(metric['foraging_xp'])},{round(metric['fishing_xp'])},{round(metric['enchanting_xp'])},{round(metric['alchemy_xp'])},{round(metric['carpentry_xp'])}"
         #         })
         #
-        #     sorted_metrics = sorted(new_metrics, key=itemgetter("capture_date"), reverse=True)
         #
-        #     player_data = {
-        #         "_id": uuid, "name": record[0]["name"], "metrics": sorted_metrics,
-        #         "latest_senither": round(int(sorted_metrics[0]["general_stats"].split(",")[0])),
-        #         "latest_lily": round(int(sorted_metrics[0]["general_stats"].split(",")[1])),
-        #         "latest_nw": round(int(sorted_metrics[0]["general_stats"].split(",")[2])),
-        #         "latest_sb_xp": round(int(sorted_metrics[0]["general_stats"].split(",")[3]), 1),
-        #         "latest_slayer": round(int(sorted_metrics[0]["slayer_stats"].split(",")[0])),
-        #         "latest_cata": round(int(sorted_metrics[0]["dungeon_stats"].split(",")[0])),
-        #         "latest_asl": round(float(sorted_metrics[0]["skill_stats"].split(",")[0]), 2),
-        #         "latest_capture_date": sorted_metrics[0]["capture_date"]
-        #     }
+        #     for record in players_data.values():
+        #         sorted_metrics = sorted(record["metrics"], key=itemgetter("capture_date"), reverse=True)
         #
-        #     saved_players.append(player_data)
+        #         player_data = {
+        #             "_id": record["_id"], "name": record["name"], "metrics": sorted_metrics,
+        #             "latest_senither": round(int(sorted_metrics[0]["general_stats"].split(",")[0])),
+        #             "latest_lily": round(int(sorted_metrics[0]["general_stats"].split(",")[1])),
+        #             "latest_nw": round(int(sorted_metrics[0]["general_stats"].split(",")[2])),
+        #             "latest_sb_xp": round(int(sorted_metrics[0]["general_stats"].split(",")[3]), 1),
+        #             "latest_slayer": round(int(sorted_metrics[0]["slayer_stats"].split(",")[0])),
+        #             "latest_cata": round(int(sorted_metrics[0]["dungeon_stats"].split(",")[0])),
+        #             "latest_asl": round(float(sorted_metrics[0]["skill_stats"].split(",")[0]), 2),
+        #             "latest_capture_date": sorted_metrics[0]["capture_date"]
+        #         }
+        #         saved_players.append(player_data)
+        #         count += 1
+        #         print(f"{count}/{len(players)}")
         #
-        #     count += 1
-        #     print(f"{count}/{len(players)}")
+        #     self.players.insert_many(saved_players)
+        #     print("Inserted")
+        #     print(time.time() - t)
+        #     t = time.time()
+        #     saved_players = []
+
 
         # write history table to json
         # with open("history_table.json", "w") as f:

@@ -70,6 +70,16 @@ players {
     latest_cata int,
     latest_asl float,
     latest_capture_date TIMESTAMP,
+    positions str # comma separated list of positions 
+            {
+                senither_weight int,
+                skills float,                    
+                catacombs float,
+                slayer int,
+                lily_weight int,
+                networth int,
+                sb_experience int  
+            }    
     
 
     
@@ -309,7 +319,8 @@ class Database2:
             "latest_asl": 1,
             "latest_slayer": 1,
             "latest_cata": 1,
-            "latest_capture_date": 1
+            "latest_capture_date": 1,
+            "positions": 1
         }).sort([(sort_by, 1 if reverse else -1)]).skip(offset).limit(25)), total
 
     """
@@ -376,49 +387,17 @@ Latest should be first
         sorted_guilds = sorted(guilds, key=lambda x: x["weighted_stats"].split(",")[key], reverse=True)
         return [guild["_id"] for guild in sorted_guilds]
 
-    def update_positions(self):
-        """
-        Updates the positions field in the guilds collection with the latest metrics
-        """
-        guilds = self.guilds.aggregate([
-            {"$unwind": "$metrics"},
-            {"$group": {
-                "_id": "$_id",
-                "weighted_stats": {"$first": "$metrics.weighted_stats"},
-            }},
-        ])
 
-        sorted_guilds_dict = {}
-        for key in range(len([
-            "catacombs", "skills", "slayer", "senither_weight", "lily_weight", "networth", "sb_experience"
-        ])):
-            sorted_guilds_dict[key] = self.sort_guilds(key)
-
-        for i in guilds:
-            _id, weighted_stats = i["_id"], i["weighted_stats"]
-
-            # Calculate the position of the guild for each stat
-            positions = []
-            for key in range(len([
-                "catacombs", "skills", "slayer", "senither_weight", "lily_weight", "networth", "sb_experience"
-            ])):
-                position = sorted_guilds_dict[key].index(_id) + 1
-                positions.append(position)
-
-            # Update the guild document with the new positions
-            self.guilds.update_one(
-                {'_id': _id},
-                {'$set': {'positions': ','.join(map(str, positions))}}
-            )
 
     def main(self):
+        pass
         # import time
         #
         # t = time.time()
-        # r = self.get_uuid_from_name("timnoot")
+        # r = self.get_player_page("latest_sb_xp")
         # print(time.time() - t)
         # print(r)
-        pass
+        # pass
 
 # # Guild import
 # import json
