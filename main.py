@@ -173,10 +173,10 @@ async def history_v2(guild_id: str = None, uuid: str = None, per_page: int = 10,
     }
 
 
-def determine_player_input(player_input: str) -> str:
-    if re.match(r"[0-9a-f]{32}", player_input):
-        return 'uuid'
-    return 'name'
+# def determine_player_input(player_input: str) -> str:
+#     if re.match(r"[0-9a-f]{32}", player_input):
+#         return 'uuid'
+#     return 'name'
 
 
 @app.get("/player/{player_input}")
